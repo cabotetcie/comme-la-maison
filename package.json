@@ -1,0 +1,11 @@
+{
+  "name": "le-qg",
+  "private": true,
+  "type": "module",
+  "description": "Le QG — gestion du quotidien du foyer (méthode TAPP)",
+  "scripts": {
+    "config": "node scripts/make-config.mjs",
+    "start": "node scripts/serve.mjs",
+    "test": "node --test tests/*.test.mjs"
+  }
+}
