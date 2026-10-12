@@ -532,3 +532,113 @@ export function expiryStatus(expires, today, soonDays = 3) {
 export function isLowStock(item) {
   return item.low_threshold != null && item.low_threshold !== '' && item.qty != null && Number(item.qty) <= Number(item.low_threshold);
 }
+
+// ---------------------------------------------------- repas ↔ inventaire
+const STOP = new Set(['de', 'd', 'du', 'des', 'la', 'le', 'les', 'l', 'en', 'a', 'au', 'aux', 'et', 'frais', 'fraiche', 'fraiches']);
+/** Mots significatifs d'un nom de produit (sans accents, pluriels ni petits mots). */
+export function nameTokens(s) {
+  return norm(s).split(/[\s'’\-]+/).filter(Boolean).filter((w) => !STOP.has(w))
+    .map((w) => (w.length > 3 && /[sx]$/.test(w) && !w.endsWith('ss') ? w.slice(0, -1) : w));
+}
+/** Basiques considérés comme toujours disponibles (modifiables dans Foyer). */
+export const DEFAULT_STAPLES = ['eau', 'sel', 'poivre'];
+export function isStaple(name, staples = DEFAULT_STAPLES) {
+  const k = nameTokens(name).join(' ');
+  return staples.some((s) => nameTokens(s).join(' ') === k);
+}
+/**
+ * Produits de l'inventaire correspondant à un ingrédient.
+ * « exact » : même nom ; sinon « proche » : le nom en stock contient tous les mots de l'ingrédient
+ * (« tomates » ↔ « tomates cerises »). Les produits vides sont écartés ; le plus tôt périmé passe en premier.
+ */
+export function matchInventory(name, inventory) {
+  const want = nameTokens(name); if (!want.length) return [];
+  const key = want.join(' ');
+  const scored = [];
+  for (const x of inventory) {
+    if (x.qty != null && Number(x.qty) <= 0) continue;
+    const have = nameTokens(x.name);
+    if (have.join(' ') === key) scored.push({ item: x, exact: true });
+    else if (want.every((w) => have.includes(w))) scored.push({ item: x, exact: false });
+  }
+  const anyExact = scored.some((s) => s.exact);
+  return scored.filter((s) => s.exact || !anyExact)
+    .sort((a, b) => (a.item.expires_on || '9999').localeCompare(b.item.expires_on || '9999'))
+    .map((s) => ({ ...s.item, _exact: s.exact }));
+}
+
+/** Convertit une quantité vers l'unité d'un produit en stock (null si impossible). */
+export function convertTo(qty, unit, targetUnit) {
+  if (qty == null || !compatibleUnits(unit, targetUnit)) return null;
+  return round(toBase(qty, unit).qty / toBase(1, targetUnit).qty);
+}
+
+/**
+ * Ce qu'une recette consommerait dans l'inventaire pour `servings` personnes.
+ * Chaque ligne : ingrédient, produit(s) en stock utilisés, quantité à déduire (dans l'unité du stock),
+ * stock restant, et si le produit devient épuisé ou bas.
+ */
+export function consumptionPlan(recipe, servings, inventory, staples = DEFAULT_STAPLES) {
+  const lines = [];
+  const left = new Map(inventory.map((x) => [x.id, x.qty == null ? null : Number(x.qty)]));
+  for (const g of recipe.ingredients || []) {
+    if (!g.name) continue;
+    const need = scaleQty(g.qty, servings, recipe.servings);
+    const base = { name: g.name, qty: need, unit: g.unit || null };
+    if (isStaple(g.name, staples)) { lines.push({ ...base, status: 'staple', uses: [] }); continue; }
+    const cands = matchInventory(g.name, inventory.map((x) => ({ ...x, qty: left.get(x.id) })));
+    if (!cands.length) { lines.push({ ...base, status: 'missing', uses: [] }); continue; }
+    const exact = cands[0]._exact;
+    const uses = [];
+    let remaining = need == null ? null : toBase(need, g.unit).qty;
+    let status = 'ok';
+    for (const c of cands) {
+      if (c.qty == null) { uses.push({ id: c.id, name: c.name, unit: c.unit, amount: null, before: null, after: null }); status = 'manual'; break; }
+      if (need == null || !compatibleUnits(c.unit, g.unit)) {
+        uses.push({ id: c.id, name: c.name, unit: c.unit, amount: null, before: c.qty, after: c.qty }); status = 'manual'; break;
+      }
+      const avail = toBase(c.qty, c.unit).qty;
+      const take = Math.min(avail, remaining);
+      const amount = round(take / toBase(1, c.unit).qty);
+      const after = round(c.qty - amount);
+      uses.push({ id: c.id, name: c.name, unit: c.unit, amount, before: c.qty, after,
+        low: after <= 0 || (c.low_threshold != null && c.low_threshold !== '' && after <= Number(c.low_threshold)) });
+      left.set(c.id, after);
+      remaining -= take;
+      if (remaining <= 1e-9) break;
+    }
+    if (status === 'ok' && remaining > 1e-9) {
+      status = 'short';
+      const miss = fromBase(remaining, toBase(1, g.unit).unit);
+      base.missing = { qty: miss.qty, unit: miss.unit };
+    }
+    lines.push({ ...base, status, exact, uses });
+  }
+  return lines;
+}
+
+/**
+ * Recettes réalisables avec l'inventaire : nombre d'ingrédients disponibles / manquants,
+ * et produits bientôt périmés qu'elles permettent d'utiliser (anti-gaspi).
+ */
+export function recipeSuggestions(recipes, inventory, today, staples = DEFAULT_STAPLES) {
+  const out = [];
+  for (const r of recipes) {
+    const ings = (r.ingredients || []).filter((g) => g.name);
+    if (!ings.length) continue;
+    const plan = consumptionPlan(r, r.servings, inventory, staples);
+    const counted = plan.filter((l) => l.status !== 'staple');
+    const missing = counted.filter((l) => l.status === 'missing');
+    const short = counted.filter((l) => l.status === 'short');
+    const have = counted.length - missing.length - short.length;
+    const rescue = [];
+    for (const l of plan) for (const u of l.uses) {
+      const item = inventory.find((x) => x.id === u.id);
+      const ex = item && expiryStatus(item.expires_on, today);
+      if (ex && ex.level !== 'ok' && !rescue.some((x) => x.id === item.id)) rescue.push({ id: item.id, name: item.name, label: ex.label });
+    }
+    const score = missing.length * 10 + short.length * 4 - rescue.length * 3 - (r.favorite ? 1 : 0);
+    out.push({ recipe: r, plan, total: counted.length, have, missing, short, rescue, ready: !missing.length && !short.length, score });
+  }
+  return out.sort((a, b) => a.score - b.score || b.have / (b.total || 1) - a.have / (a.total || 1) || a.recipe.name.localeCompare(b.recipe.name, 'fr'));
+}

@@ -9,7 +9,9 @@ if (existsSync('.env')) {
     if (m && !env[m[1]]) env[m[1]] = m[2].replace(/^["']|["']$/g, '');
   }
 }
-const url = (env.SUPABASE_URL || '').trim();
+let url = (env.SUPABASE_URL || '').trim();
+// On ne garde que « https://xxxx.supabase.co » (erreur fréquente : « …/rest/v1/ » collé à la fin)
+try { const u = new URL(url); if (u.pathname !== '/' || u.search) console.warn(`⚠ SUPABASE_URL corrigée : « ${url} » → « ${u.origin} »`); url = u.origin; } catch { /* vérifié plus bas */ }
 const key = (env.SUPABASE_ANON_KEY || '').trim();
 if (!url || !key) {
   console.error('✗ SUPABASE_URL et SUPABASE_ANON_KEY sont requis (fichier .env ou variables d’environnement).');

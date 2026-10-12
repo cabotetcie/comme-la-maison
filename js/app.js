@@ -6,7 +6,7 @@ import * as D from './data.js';
 import { icon } from './icons.js';
 import {
   st, ui, hooks, $, esc, today, me, other, hid, putRow, dropRow, findItem,
-  toast, errMsg, save, openSheet, closeSheet, confirmBox, opts,
+  toast, errMsg, save, openSheet, closeSheet, confirmBox, opts, staples,
 } from './core.js';
 import * as V from './views.js';
 import * as F from './forms.js';
@@ -84,86 +84,69 @@ function updateNav() {
 }
 
 // =====================================================================
-//  Écrans hors application : configuration, connexion, création du foyer
+//  Écrans hors application : configuration, « Qui es-tu ? »
 // =====================================================================
 const brandBlock = `<div class="auth-brand"><img src="icons/icon-192.png" alt="" width="96" height="96"><h1>Le QG</h1><p>Le quotidien du foyer d’Ilona et Adrien</p></div>`;
+const whoPick = () => `<div class="who-pick" role="radiogroup" aria-label="Qui es-tu ?">
+  ${['ilona', 'adrien'].map((p) => `<label class="who p-${p}"><input type="radio" name="person" value="${p}" required ${ui.lastPerson === p ? 'checked' : ''}><span>${icon('user')}<b>Je suis ${P[p]}</b></span></label>`).join('')}</div>`;
 const SCREENS = {
   loading: () => `<div class="center-screen">${brandBlock}<p class="muted">Chargement…</p></div>`,
   config: () => `<div class="center-screen"><div class="auth-card">${brandBlock}
     <div class="notice warn">${icon('alert')}<div><strong>Configuration manquante</strong>
     <p>Le fichier <code>js/config.js</code> est introuvable ou incomplet. Créez-le à partir de <code>.env</code> avec <code>npm run config</code> (voir le README), puis rechargez la page.</p></div></div></div></div>`,
   error: () => `<div class="center-screen"><div class="auth-card">${brandBlock}<div class="notice warn">${icon('alert')}<div><strong>Impossible de démarrer</strong><p>${esc(ui.error)}</p><button class="btn" onclick="location.reload()">Réessayer</button></div></div></div></div>`,
-  auth: () => {
-    const m = ui.authMode;
-    const msg = ui.authMsg ? `<div class="notice ${ui.authMsg.kind === 'err' ? 'warn' : ''}">${icon(ui.authMsg.kind === 'err' ? 'alert' : 'check')}<div><p>${esc(ui.authMsg.text)}</p></div></div>` : '';
-    const invite = ui.inviteCode ? `<p class="hint">Invitation reçue : créez votre compte (ou connectez-vous), le code ${esc(ui.inviteCode)} sera prérempli.</p>` : '';
-    if (m === 'reset') return `<div class="center-screen"><div class="auth-card">${brandBlock}${msg}
-      <form data-form="reset" class="stack"><h2>Mot de passe oublié</h2>
-      <label class="field"><span class="label">Adresse e-mail</span><input type="email" name="email" required autocomplete="email"></label>
-      <button class="btn primary big">Recevoir un lien</button>
-      <button type="button" class="btn ghost" data-act="auth-mode" data-mode="login">Retour</button></form></div></div>`;
-    if (m === 'newpass') return `<div class="center-screen"><div class="auth-card">${brandBlock}${msg}
-      <form data-form="newpass" class="stack"><h2>Nouveau mot de passe</h2>
-      <label class="field"><span class="label">Nouveau mot de passe (8 caractères minimum)</span><input type="password" name="password" minlength="8" required autocomplete="new-password"></label>
-      <button class="btn primary big">Enregistrer</button></form></div></div>`;
-    const signup = m === 'signup';
-    return `<div class="center-screen"><div class="auth-card">${brandBlock}${msg}${invite}
-      <div class="tabs" role="tablist"><button role="tab" aria-selected="${!signup}" data-act="auth-mode" data-mode="login">Se connecter</button><button role="tab" aria-selected="${signup}" data-act="auth-mode" data-mode="signup">Créer un compte</button></div>
-      <form data-form="${signup ? 'signup' : 'login'}" class="stack">
-        <label class="field"><span class="label">Adresse e-mail</span><input type="email" name="email" required autocomplete="email"></label>
-        <label class="field"><span class="label">Mot de passe${signup ? ' (8 caractères minimum)' : ''}</span><input type="password" name="password" required ${signup ? 'minlength="8" autocomplete="new-password"' : 'autocomplete="current-password"'}></label>
-        <button class="btn primary big">${signup ? 'Créer mon compte' : 'Se connecter'}</button>
-      </form>
-      ${signup ? '<p class="muted small">Chaque personne du foyer crée son propre compte avec sa propre adresse e-mail.</p>' : '<button class="btn ghost small" data-act="auth-mode" data-mode="reset">Mot de passe oublié ?</button>'}
-    </div></div>`;
-  },
-  onboarding: () => {
-    const join = ui.onboard === 'join';
-    return `<div class="center-screen"><div class="auth-card">${brandBlock}
-      <p class="muted small">Connecté·e : ${esc(st.session?.user?.email || '')}</p>
-      <div class="tabs" role="tablist"><button role="tab" aria-selected="${!join}" data-act="onboard" data-mode="create">Créer notre foyer</button><button role="tab" aria-selected="${join}" data-act="onboard" data-mode="join">Rejoindre un foyer</button></div>
-      ${join ? `<form data-form="join-hh" class="stack">
-          <p>Saisissez le code d’invitation affiché chez l’autre membre (rubrique Foyer).</p>
-          <label class="field"><span class="label">Code d’invitation</span><input name="code" required maxlength="12" value="${esc(ui.inviteCode)}" autocapitalize="characters" autocomplete="off" class="code-input"></label>
-          <button class="btn primary big">Rejoindre</button></form>`
-        : `<form data-form="create-hh" class="stack">
-          <label class="field"><span class="label">Nom du foyer</span><input name="name" value="Le QG" maxlength="60" required></label>
-          <div class="field"><span class="label">Je suis</span><div class="seg"><label><input type="radio" name="person" value="ilona" required><span>Ilona</span></label><label><input type="radio" name="person" value="adrien" required><span>Adrien</span></label></div></div>
-          <p class="muted small">Le planning ménage, les deux tâches ponctuelles et la liste de courses de départ seront ajoutés une seule fois.</p>
-          <button class="btn primary big">Créer le foyer</button></form>`}
-      <button class="btn ghost small" data-act="logout">Se déconnecter</button>
-    </div></div>`;
+  welcome: () => {
+    const msg = ui.authMsg ? `<div class="notice warn">${icon('alert')}<div><p>${esc(ui.authMsg)}</p></div></div>` : '';
+    if (ui.firstRun) return `<div class="center-screen"><div class="auth-card">${brandBlock}${msg}
+      <form data-form="setup" class="stack">
+        <h2>Première ouverture</h2>
+        <p class="muted small">Le foyer n’existe pas encore. Dites qui vous êtes et choisissez ensemble un <strong>code du foyer</strong> : chacun le tapera une seule fois sur chaque téléphone ou ordinateur, puis l’app s’en souviendra.</p>
+        ${whoPick()}
+        <label class="field"><span class="label">Code du foyer (4 caractères minimum)</span><input type="password" name="code" minlength="4" required autocomplete="new-password"></label>
+        <label class="field"><span class="label">Confirmer le code</span><input type="password" name="code2" minlength="4" required autocomplete="new-password"></label>
+        <button class="btn primary big">Créer notre foyer</button>
+      </form></div></div>`;
+    return `<div class="center-screen"><div class="auth-card">${brandBlock}${msg}
+      <form data-form="enter" class="stack">
+        <h2>Qui es-tu ?</h2>
+        ${whoPick()}
+        <label class="field"><span class="label">Code du foyer</span><input type="password" name="code" required autocomplete="current-password"></label>
+        <p class="muted small">À faire une seule fois sur cet appareil : l’app s’en souviendra ensuite.</p>
+        <button class="btn primary big">Entrer</button>
+      </form></div></div>`;
   },
 };
 
 // =====================================================================
 //  Démarrage, session, chargement et synchronisation
 // =====================================================================
-function readInvite() {
-  try {
-    const u = new URL(location.href);
-    const code = u.searchParams.get('invitation');
-    if (code) { sessionStorage.setItem('qg-invite', code); u.searchParams.delete('invitation'); history.replaceState(null, '', u.pathname + u.search + u.hash); }
-    ui.inviteCode = (code || sessionStorage.getItem('qg-invite') || '').toUpperCase();
-  } catch { /* stockage indisponible : on ignore */ }
-  if (ui.inviteCode) { ui.onboard = 'join'; ui.authMode = 'signup'; }
+async function showWelcome() {
+  ui.screen = 'welcome';
+  try { ui.firstRun = !(await D.rpc('household_exists', {})); } catch (e) { ui.firstRun = false; ui.authMsg = errMsg(e); }
+  render();
 }
 
 async function boot() {
   hooks.render = render;
-  readInvite();
   ui.route = (location.hash.slice(2) || 'today').split('?')[0];
   if (!VIEWS[ui.route]) ui.route = 'today';
   render();
   if (!D.configured) { ui.screen = 'config'; render(); return; }
   try { sb = await D.client(); } catch (e) { ui.screen = 'error'; ui.error = 'Le service de données ne répond pas. ' + errMsg(e); render(); return; }
-  sb.auth.onAuthStateChange((event, session) => {
-    if (event === 'PASSWORD_RECOVERY') { ui.screen = 'auth'; ui.authMode = 'newpass'; render(); return; }
-    if (event === 'SIGNED_OUT') { teardown(); ui.screen = 'auth'; ui.authMode = 'login'; render(); return; }
-    if (event === 'SIGNED_IN' && !st.me) setTimeout(() => onSession(session), 0);
+  sb.auth.onAuthStateChange((event) => {
+    if (event === 'SIGNED_OUT' && ui.screen === 'app') { teardown(); showWelcome(); }
   });
   const { data } = await sb.auth.getSession();
   await onSession(data.session);
+}
+
+/** Session anonyme propre à l'appareil (créée au premier « Je suis … »). */
+async function ensureSession() {
+  const { data } = await sb.auth.getSession();
+  if (data.session) return data.session;
+  const r = await sb.auth.signInAnonymously();
+  if (r.error) throw r.error;
+  return r.data.session;
 }
 
 async function onSession(session) {
@@ -171,13 +154,12 @@ async function onSession(session) {
   booting = true;
   try {
     st.session = session;
-    if (!session) { ui.screen = 'auth'; render(); return; }
+    if (!session) { await showWelcome(); return; }
     const m = await D.myMembership(session.user.id);
-    if (!m) { ui.screen = 'onboarding'; render(); return; }
+    if (!m) { await showWelcome(); return; }
     st.me = m;
     await loadAll();
-    try { sessionStorage.removeItem('qg-invite'); } catch { /* rien */ }
-    ui.screen = 'app';
+    ui.screen = 'app'; ui.authMsg = null;
     $('#app').innerHTML = '';
     render();
     if (channel) channel.unsubscribe?.();
@@ -194,7 +176,7 @@ async function loadAll() {
   const rows = await Promise.all(names.map((n) => D.loadTable(n, hid(), t)));
   names.forEach((n, k) => { st[D.TABLES[n]] = rows[k]; });
   st.hh = st.hh[0] || null;
-  st.me = st.members.find((x) => x.user_id === st.session.user.id) || st.me;
+  st.me = st.devices.find((x) => x.user_id === st.session.user.id) || st.me;
 }
 
 const reloadTimers = {};
@@ -217,7 +199,7 @@ async function refreshAll() {
 function teardown() {
   if (channel) channel.unsubscribe?.();
   channel = null;
-  Object.assign(st, { session: null, me: null, hh: null, members: [], tasks: [], occ: [], projects: [], inbox: [], avail: [], recipes: [], meals: [], shopping: [], inventory: [] });
+  Object.assign(st, { session: null, me: null, hh: null, members: [], devices: [], tasks: [], occ: [], projects: [], inbox: [], avail: [], recipes: [], meals: [], shopping: [], inventory: [] });
 }
 
 // =====================================================================
@@ -302,9 +284,11 @@ function readTaskForm(fd, existing) {
 const A = {
   'close-sheet': () => closeSheet(),
   more: () => openSheet('Menu', F.moreSheet({ inbox: V.organizeCount(), stock: st.inventory.filter((x) => L.isLowStock(x)).length })),
-  'auth-mode': (d) => { ui.authMode = d.mode; ui.authMsg = null; render(); },
-  onboard: (d) => { ui.onboard = d.mode; render(); },
-  logout: async () => { await sb.auth.signOut(); teardown(); ui.screen = 'auth'; render(); },
+  logout: async () => {
+    if (!await confirmBox(`Changer de personne sur cet appareil ?`, { ok: 'Changer', danger: false, detail: `Cet appareil ne sera plus reconnu comme ${P[me()]}. Il faudra choisir « Je suis … » et retaper le code du foyer.` })) return;
+    try { await D.rpc('leave_device', {}); } catch (e) { console.warn(e); }
+    await sb.auth.signOut(); teardown(); await showWelcome();
+  },
 
   // --- navigation interne
   'maison-tab': (d) => { ui.maisonTab = d.tab; if (ui.route !== 'maison') location.hash = '#/maison'; else render(); },
@@ -465,6 +449,40 @@ const A = {
   },
 
   // --- courses
+
+  // --- cuisiner : repas ↔ inventaire ↔ courses
+  'meal-cook': (d) => {
+    const m = st.meals.find((x) => x.id === d.id); const r = m && st.recipes.find((x) => x.id === m.recipe_id);
+    if (!r) return toast('Ce repas n’est pas relié à une idée de repas avec des ingrédients.', 'err');
+    openCook(r, m.servings, m);
+  },
+  'recipe-cook': (d) => { const r = st.recipes.find((x) => x.id === d.id); openCook(r, r.servings, null); },
+  'meal-uncook': async (d) => {
+    const m = st.meals.find((x) => x.id === d.id); if (!m?.cooked) return;
+    const used = m.cooked.used || [];
+    if (!await confirmBox(`Annuler « Cuisiné » pour « ${V.mealTitle(m)} » ?`, { ok: 'Annuler la cuisine', danger: false,
+      detail: used.length ? `Les quantités retirées seront remises dans l’inventaire : ${used.map((u) => `${u.name} ${L.fmtQty(u.amount, u.unit)}`).join(', ')}.` : 'Rien n’avait été retiré de l’inventaire.' })) return;
+    save(async () => {
+      for (const u of used) {
+        const x = st.inventory.find((y) => y.id === u.id);
+        if (x && x.qty != null) putRow('inventory', await D.update('inventory_items', x.id, { qty: Math.round((Number(x.qty) + Number(u.amount)) * 100) / 100 }));
+      }
+      putRow('meals', await D.update('meals', m.id, { cooked: null }));
+    }, 'Annulé : ingrédients remis dans l’inventaire');
+  },
+  'sugg-shop': (d) => {
+    const r = st.recipes.find((x) => x.id === d.id);
+    const plan = L.consumptionPlan(r, r.servings, st.inventory, staples());
+    const lines = plan.filter((l) => l.status === 'missing' || l.status === 'short').map((l) => {
+      const q = l.status === 'short' ? l.missing : { qty: l.qty, unit: l.unit };
+      return { name: l.name, qty: q.qty ?? null, unit: q.unit || null, category: L.guessShopCategory(l.name) };
+    });
+    if (!lines.length) return toast('Rien ne manque pour cette recette.');
+    save(async () => { const n = await addToShopping(lines); toast(`${n} produit${n > 1 ? 's' : ''} ajouté${n > 1 ? 's' : ''} ou complété${n > 1 ? 's' : ''} sur la liste de courses`); }, '');
+  },
+  'staple-delete': (d) => save(async () => {
+    st.hh = await D.updateHousehold(st.hh.id, { settings: { ...st.hh.settings, staples: staples().filter((x) => x !== d.name) } });
+  }, `« ${d.name} » retiré des basiques`),
   'shop-edit': (d) => openSheet('Produit', F.shopEditForm(st.shopping.find((x) => x.id === d.id))),
   'shop-delete': (d) => save(async () => { await D.remove('shopping_items', d.id); dropRow('shopping', d.id); closeSheet(); }, 'Produit supprimé'),
   'shop-stow': () => {
@@ -521,6 +539,15 @@ const A = {
   },
 };
 
+
+/** Ouvre la feuille « Cuisiner » : ce qui sera retiré de l'inventaire et ce qui partira aux courses. */
+function openCook(recipe, servings, meal) {
+  const plan = L.consumptionPlan(recipe, servings, st.inventory, staples());
+  const { ops, shop } = F.buildCook(plan);
+  ui.cook = { recipeId: recipe.id, mealId: meal?.id || null, servings, plan, ops, shop };
+  openSheet(`Cuisiner « ${recipe.name} »`, F.cookForm({ recipe, servings, meal, plan, ops, shop }), { wide: true });
+}
+
 async function addToShopping(lines) {
   const plan = L.planMergeInto(lines.map((l) => ({ ...l, category: l.category || L.guessShopCategory(l.name) })), st.shopping);
   for (const u of plan.updates) putRow('shopping', await D.update('shopping_items', u.id, { qty: u.qty, unit: u.unit }));
@@ -535,36 +562,32 @@ async function addToShopping(lines) {
 //  Formulaires (envoi)
 // =====================================================================
 const FORMS = {
-  // --- comptes
-  login: async (fd) => {
-    const { error } = await sb.auth.signInWithPassword({ email: fd.get('email').trim(), password: fd.get('password') });
-    if (error) { ui.authMsg = { kind: 'err', text: errMsg(error) }; render(); }
+  // --- « Qui es-tu ? »
+  setup: async (fd) => {
+    ui.lastPerson = fd.get('person');
+    if (fd.get('code') !== fd.get('code2')) { ui.authMsg = 'Les deux codes ne sont pas identiques.'; render(); return; }
+    try {
+      const session = await ensureSession();
+      await D.rpc('setup_household', { p_person: fd.get('person'), p_code: fd.get('code') });
+      toast('Foyer créé'); await onSession(session);
+    } catch (e) { ui.authMsg = errMsg(e); render(); }
   },
-  signup: async (fd) => {
-    const email = fd.get('email').trim();
-    const redirect = location.origin + location.pathname + (ui.inviteCode ? `?invitation=${encodeURIComponent(ui.inviteCode)}` : '');
-    const { data, error } = await sb.auth.signUp({ email, password: fd.get('password'), options: { emailRedirectTo: redirect } });
-    if (error) { ui.authMsg = { kind: 'err', text: errMsg(error) }; render(); return; }
-    if (!data.session) { ui.authMsg = { kind: 'ok', text: `Compte créé. Un e-mail de confirmation a été envoyé à ${email} : ouvrez le lien, puis connectez-vous.` }; ui.authMode = 'login'; render(); }
+  enter: async (fd) => {
+    ui.lastPerson = fd.get('person');
+    try {
+      const session = await ensureSession();
+      await D.rpc('enter_household', { p_person: fd.get('person'), p_code: fd.get('code') });
+      toast(`Bienvenue ${P[fd.get('person')]} !`); await onSession(session);
+    } catch (e) {
+      ui.authMsg = errMsg(e);
+      if (/existe pas encore/.test(ui.authMsg)) ui.firstRun = true;
+      render();
+    }
   },
-  reset: async (fd) => {
-    const { error } = await sb.auth.resetPasswordForEmail(fd.get('email').trim(), { redirectTo: location.origin + location.pathname });
-    ui.authMsg = error ? { kind: 'err', text: errMsg(error) } : { kind: 'ok', text: 'Si un compte existe pour cette adresse, un lien de réinitialisation vient d’être envoyé.' };
-    render();
-  },
-  newpass: async (fd) => {
-    const { error } = await sb.auth.updateUser({ password: fd.get('password') });
-    if (error) { ui.authMsg = { kind: 'err', text: errMsg(error) }; render(); return; }
-    toast('Mot de passe modifié'); ui.authMsg = null;
-    const { data } = await sb.auth.getSession(); await onSession(data.session);
-  },
-  'create-hh': async (fd) => {
-    try { await D.rpc('create_household', { p_name: fd.get('name'), p_person: fd.get('person') }); toast('Foyer créé'); await onSession(st.session); }
-    catch (e) { toast(errMsg(e), 'err'); }
-  },
-  'join-hh': async (fd) => {
-    try { const r = await D.rpc('join_household', { p_code: fd.get('code') }); toast(`Bienvenue ${P[r.person]} !`); await onSession(st.session); }
-    catch (e) { toast(errMsg(e), 'err'); }
+  'hh-code': async (fd, form) => {
+    if (fd.get('code') !== fd.get('code2')) return toast('Les deux codes ne sont pas identiques.', 'err');
+    const ok = await save(() => D.rpc('change_household_code', { p_new: fd.get('code') }), 'Code du foyer modifié. Les appareils déjà reconnus restent connectés.');
+    if (ok) form.reset();
   },
 
   // --- capture
@@ -803,12 +826,46 @@ const FORMS = {
     }
   },
   'member-prefs': async (fd, form) => save(async () => {
-    const row = await D.updateMember(hid(), form.dataset.person, { daily_capacity_min: Math.max(0, int(fd.get('cap')) ?? 60), preferred_categories: fd.getAll('pref'), avoided_categories: fd.getAll('avoid') });
+    const row = await D.updatePerson(hid(), form.dataset.person, { daily_capacity_min: Math.max(0, int(fd.get('cap')) ?? 60), preferred_categories: fd.getAll('pref'), avoided_categories: fd.getAll('avoid') });
     const k = st.members.findIndex((m) => m.person === row.person); st.members[k] = row;
   }, 'Préférences enregistrées'),
 
   // --- foyer
   'hh-name': async (fd) => save(async () => { st.hh = await D.updateHousehold(st.hh.id, { name: String(fd.get('name')).trim() }); }, 'Nom enregistré'),
+
+  cook: async (fd) => {
+    const c = ui.cook; if (!c) return;
+    const recipe = st.recipes.find((x) => x.id === c.recipeId);
+    const meal = c.mealId && st.meals.find((x) => x.id === c.mealId);
+    const picks = fd.getAll('use').map(Number);
+    const used = [];
+    for (const i of picks) {
+      const o = c.ops[i]; const amount = num(fd.get('amt' + i));
+      if (!o || !amount || amount <= 0) continue;
+      const prev = used.find((u) => u.id === o.id);
+      if (prev) prev.amount += amount; else used.push({ id: o.id, name: o.name, unit: o.unit || null, amount });
+    }
+    const shopLines = fd.getAll('shop').map(Number).map((i) => c.shop[i]).filter(Boolean)
+      .map((x) => ({ name: x.name, qty: x.qty ?? null, unit: x.unit || null, category: categoryFor(x.name) }));
+    return save(async () => {
+      for (const u of used) {
+        const x = st.inventory.find((y) => y.id === u.id); if (!x || x.qty == null) continue;
+        const after = Math.max(0, Math.round((Number(x.qty) - u.amount) * 100) / 100);
+        u.amount = Math.round((Number(x.qty) - after) * 100) / 100;   // ce qui a réellement été retiré (pour l'annulation)
+        putRow('inventory', await D.update('inventory_items', x.id, { qty: after }));
+      }
+      if (meal) putRow('meals', await D.update('meals', meal.id, { cooked: { at: new Date().toISOString(), by: me(), servings: num(fd.get('servings')) || c.servings, used } }));
+      const n = shopLines.length ? await addToShopping(shopLines) : 0;
+      ui.cook = null; closeSheet();
+      toast(`${recipe.name} : ${used.length} produit${used.length > 1 ? 's' : ''} mis à jour dans l’inventaire${n ? ` · ${n} ajouté${n > 1 ? 's' : ''} aux courses` : ''}`);
+    }, '');
+  },
+  'staple-add': async (fd, form) => {
+    const name = String(fd.get('name')).trim(); if (!name) return;
+    if (staples().some((x) => L.norm(x) === L.norm(name))) return toast('Ce basique existe déjà.', 'err');
+    const ok = await save(async () => { st.hh = await D.updateHousehold(st.hh.id, { settings: { ...st.hh.settings, staples: [...staples(), name] } }); }, `« ${name} » ajouté aux basiques`);
+    if (ok) form.reset();
+  },
   'loc-add': async (fd, form) => {
     const name = String(fd.get('name')).trim(); if (!name) return;
     const key = L.norm(name).replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || rid();
@@ -817,6 +874,11 @@ const FORMS = {
     if (ok) form.reset();
   },
 };
+/** Catégorie de courses : celle du produit en stock s'il existe, sinon devinée. */
+function categoryFor(name) {
+  const x = L.matchInventory(name, st.inventory.map((y) => ({ ...y, qty: null })))[0];
+  return x && L.SHOP_CATEGORIES[x.category] ? x.category : L.guessShopCategory(name);
+}
 function locations() { return { ...L.DEFAULT_LOCATIONS, ...(st.hh?.settings?.locations || {}) }; }
 
 // =====================================================================
@@ -864,6 +926,12 @@ document.addEventListener('change', (e) => {
     }
   }
   if (k === 'fav-only') { ui.favOnly = el.checked; render(); }
+  if (k === 'ready-only') { ui.readyOnly = el.checked; render(); }
+  if (k === 'cook-servings' && ui.cook) {
+    const r = st.recipes.find((x) => x.id === ui.cook.recipeId); const m = ui.cook.mealId && st.meals.find((x) => x.id === ui.cook.mealId);
+    const n = Math.max(1, Math.min(50, Number(el.value) || r.servings));
+    openCook(r, n, m);
+  }
 });
 document.addEventListener('input', (e) => {
   if (e.target.dataset.input === 'recipe-search') { ui.recipeQuery = e.target.value; ui.refocus = '[data-input=recipe-search]'; render(); }

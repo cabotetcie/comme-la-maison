@@ -355,3 +355,45 @@ export function moreSheet(counts) {
   const items = [['#/inbox', 'inbox', 'À organiser', counts.inbox], ['#/stock', 'box', 'Inventaire', counts.stock], ['#/dispos', 'calendar', 'Disponibilités et répartition', 0], ['#/foyer', 'users', 'Foyer et compte', 0]];
   return `<div class="choice-list">${items.map(([h, ic, lab, n]) => `<a class="choice" href="${h}" data-act="close-sheet">${icon(ic)}<span><strong>${lab}</strong></span>${n ? `<span class="badge">${n}</span>` : ''}</a>`).join('')}</div>`;
 }
+
+// ------------------------------------------------------------- cuisiner une recette → inventaire
+/** Transforme le plan de consommation en opérations cochables : déductions de stock et ajouts aux courses. */
+export function buildCook(plan) {
+  const ops = []; const shop = [];
+  plan.forEach((l, k) => {
+    for (const u of l.uses) {
+      ops.push({ line: k, id: u.id, name: u.name, unit: u.unit, amount: u.amount, before: u.before, untracked: u.before == null });
+      if (u.low) shop.push({ line: k, name: u.name, qty: null, unit: null, checked: true, why: u.after <= 0 ? 'épuisé' : 'stock bas' });
+    }
+    if (l.status === 'missing') shop.push({ line: k, name: l.name, qty: l.qty, unit: l.unit, checked: false, why: 'pas dans l’inventaire' });
+    if (l.status === 'short') shop.push({ line: k, name: l.name, qty: l.missing.qty, unit: l.missing.unit || null, checked: true, why: 'pas assez en stock' });
+  });
+  return { ops, shop };
+}
+
+export function cookForm({ recipe, servings, meal, plan, ops, shop }) {
+  const STATUS = {
+    ok: '', manual: 'Quantité à ajuster', short: 'Pas assez en stock', missing: 'Pas dans l’inventaire', staple: 'Basique toujours disponible',
+  };
+  const lines = plan.map((l, k) => {
+    const myOps = ops.map((o, i) => ({ ...o, i })).filter((o) => o.line === k);
+    const myShop = shop.map((x, i) => ({ ...x, i })).filter((x) => x.line === k);
+    const need = L.fmtQty(l.qty, l.unit);
+    return `<div class="cook-line ${l.status}">
+      <div class="cook-head"><strong>${esc(l.name)}</strong>${need ? `<span class="muted small">${esc(need)}</span>` : ''}${STATUS[l.status] ? `<span class="chip ${l.status === 'missing' || l.status === 'short' ? 'soon' : ''}">${STATUS[l.status]}</span>` : ''}</div>
+      ${myOps.map((o) => o.untracked
+        ? `<p class="small muted">${esc(o.name)} : quantité non suivie dans l’inventaire, rien à déduire.</p>`
+        : `<label class="cook-op"><input type="checkbox" name="use" value="${o.i}" ${o.amount ? 'checked' : ''}>
+            <span class="grow">Déduire de <strong>${esc(o.name)}</strong> <span class="muted small">(en stock : ${esc(L.fmtQty(o.before, o.unit) || '0')})</span></span>
+            <span class="amt"><input name="amt${o.i}" value="${esc(o.amount == null ? '' : String(o.amount).replace('.', ','))}" inputmode="decimal" aria-label="Quantité à déduire de ${esc(o.name)}" placeholder="Qté"><span class="unit">${esc(o.unit || 'pièce(s)')}</span></span></label>`).join('')}
+      ${myShop.map((x) => `<label class="check-line small"><input type="checkbox" name="shop" value="${x.i}" ${x.checked ? 'checked' : ''}><span>${icon('cart')} Ajouter « ${esc(x.name)} »${x.qty != null ? ` (${esc(L.fmtQty(x.qty, x.unit))})` : ''} aux courses — ${esc(x.why)}</span></label>`).join('')}
+    </div>`;
+  }).join('');
+  return `<form data-form="cook" class="stack">
+    <p class="muted small">${meal ? `Repas du ${esc(L.fmtLongDate(meal.meal_date))}. ` : ''}Vérifiez les quantités utilisées : elles seront retirées de l’inventaire.${meal ? ' Vous pourrez annuler en touchant « Cuisiné ».' : ''}</p>
+    <label class="field inline-servings"><span class="label">Pour combien de personnes ?</span>
+      <input type="number" name="servings" min="1" max="50" value="${servings}" data-change="cook-servings" inputmode="numeric"></label>
+    ${lines || '<p class="muted">Cette recette n’a pas d’ingrédients.</p>'}
+    <div class="sheet-actions"><button type="button" class="btn ghost" data-act="close-sheet">Annuler</button><button class="btn primary">${icon('check')}Valider et mettre à jour l’inventaire</button></div>
+  </form>`;
+}

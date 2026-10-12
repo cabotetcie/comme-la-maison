@@ -3,7 +3,7 @@ import * as L from './logic.js';
 import { icon } from './icons.js';
 
 export const st = {
-  session: null, me: null, hh: null, members: [], tasks: [], occ: [], projects: [], inbox: [],
+  session: null, me: null, hh: null, members: [], devices: [], tasks: [], occ: [], projects: [], inbox: [],
   avail: [], recipes: [], meals: [], shopping: [], inventory: [],
 };
 export const ui = {
@@ -20,6 +20,7 @@ export const today = () => L.todayISO();
 export const me = () => st.me?.person;
 export const other = (p = me()) => (p === 'ilona' ? 'adrien' : 'ilona');
 export const hid = () => st.me?.household_id;
+export const staples = () => (Array.isArray(st.hh?.settings?.staples) ? st.hh.settings.staples : L.DEFAULT_STAPLES);
 export const locations = () => ({ ...L.DEFAULT_LOCATIONS, ...(st.hh?.settings?.locations || {}) });
 
 export function putRow(key, row) {
@@ -60,10 +61,8 @@ export function errMsg(e) {
   const m = e?.message || String(e);
   if (/fetch|network|Load failed/i.test(m)) return 'Connexion impossible. Vérifiez le réseau puis réessayez.';
   if (/row-level security|permission denied/i.test(m)) return 'Accès refusé : cette donnée n’appartient pas à votre foyer.';
-  if (/Invalid login credentials/i.test(m)) return 'E-mail ou mot de passe incorrect.';
-  if (/Email not confirmed/i.test(m)) return 'Adresse e-mail pas encore confirmée : ouvrez le lien reçu par e-mail.';
-  if (/User already registered/i.test(m)) return 'Un compte existe déjà avec cette adresse : connectez-vous.';
-  if (/Password should be/i.test(m)) return 'Mot de passe trop court (8 caractères minimum).';
+  if (/anonymous sign-?ins? (are )?disabled/i.test(m)) return 'Connexion impossible : dans Supabase, activez « Allow anonymous sign-ins » (Authentication → Sign In / Providers).';
+  if (/rate limit/i.test(m)) return 'Trop d’essais en peu de temps. Patientez quelques minutes.';
   return m;
 }
 /** Exécute une écriture : notification de confirmation ou d'erreur, puis nouvel affichage. */

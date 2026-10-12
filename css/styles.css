@@ -525,3 +525,45 @@ dialog { color: var(--text); }
 .auth-brand p { color: var(--muted); margin: 2px 0 0; }
 .auth-card h2 { font-size: 1.2rem; }
 .code-input { text-transform: uppercase; letter-spacing: .25em; font-weight: 800; text-align: center; font-size: 1.3rem !important; }
+
+/* « Qui es-tu ? » */
+.who-pick { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.who { position: relative; cursor: pointer; }
+.who input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
+.who span { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 18px 10px; border-radius: 16px; text-align: center;
+  border: 2px solid var(--chrome-2); background: #fff; font-size: 1rem; }
+.who span .ic { width: 34px; height: 34px; padding: 6px; border-radius: 50%; }
+.who.p-ilona span .ic { color: var(--ilona); background: var(--ilona-bg); }
+.who.p-adrien span .ic { color: var(--adrien); background: var(--adrien-bg); }
+.who input:checked + span { border-color: var(--red-500); background: var(--red-50); box-shadow: 0 0 0 3px rgba(224, 51, 79, .18); }
+.who input:checked + span b::before { content: '✓ '; color: var(--red-600); }
+.who input:focus-visible + span { outline: 3px solid var(--red-400); outline-offset: 2px; }
+
+/* Repas ↔ inventaire */
+.meal-row { display: flex; align-items: center; gap: 8px; border-top: 1px solid var(--wine-100); }
+.meal-row:first-of-type { border-top: 0; }
+.meal-row .meal-line { border-top: 0; flex: 1; min-width: 0; }
+.cook-btn { flex: none; }
+.cook-chip { cursor: pointer; flex: none; }
+.meal-slot-card .cook-btn span { display: none; }
+@media (min-width: 1200px) { .meal-slot-card .cook-btn span { display: inline; } }
+.cook-line { padding: 12px 0; border-top: 1px solid var(--wine-100); display: flex; flex-direction: column; gap: 8px; }
+.cook-line.staple { opacity: .7; }
+.cook-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.cook-op { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; cursor: pointer; }
+.cook-op > input { width: 22px; height: 22px; accent-color: var(--wine-700); flex: none; }
+.cook-op .amt { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; }
+.cook-op .amt input { width: 92px; min-height: 40px; padding: 6px 10px; }
+.cook-op .unit { font-size: .85rem; color: var(--muted); min-width: 34px; }
+.inline-servings { max-width: 260px; }
+.ing-list { list-style: none; margin: 10px 0 4px; padding: 0; display: flex; flex-direction: column; gap: 4px; font-size: .92rem; }
+.ing-list li { display: flex; gap: 8px; align-items: flex-start; }
+.ing-list .ic { width: 18px; height: 18px; margin-top: 2px; }
+.ing-ok .ic, .ing-staple .ic { color: var(--wine-700); }
+.ing-staple { color: var(--muted); }
+.ing-short .ic { color: var(--red-600); }
+.ing-missing { color: var(--muted); }
+.ing-missing .ic { color: var(--danger); }
+.rescue { display: flex; gap: 6px; align-items: flex-start; color: var(--red-700); margin-top: 8px; }
+.rescue .ic { flex: none; margin-top: 2px; }
+.sugg.is-ready { background: linear-gradient(var(--wine-50), var(--wine-50)) padding-box, linear-gradient(135deg, var(--red-400), var(--chrome-3)) border-box; }

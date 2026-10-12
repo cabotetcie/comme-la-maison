@@ -37,17 +37,15 @@ with sync_playwright() as p:
     a = ctx.new_page(); setup(a, 'Adrien')
     a.goto(BASE)
 
-    # ---------------- 1. Compte Adrien + création du foyer
-    a.get_by_role('tab', name='Créer un compte').click()
-    a.fill('input[name=email]', 'adrien@test.local'); a.fill('input[name=password]', 'motdepasse-test')
-    a.screenshot(path=SHOTS / '01-connexion.png')
-    a.get_by_role('button', name='Créer mon compte').click()
-    a.locator('form[data-form=create-hh]').wait_for()
-    a.locator('form[data-form=create-hh] label', has_text='Adrien').click()
-    a.screenshot(path=SHOTS / '02-creation-foyer.png')
-    a.get_by_role('button', name='Créer le foyer').click()
+    # ---------------- 1. Première ouverture : « Je suis Adrien » + code du foyer
+    a.locator('form[data-form=setup]').wait_for()
+    a.locator('label.who', has_text='Je suis Adrien').click()
+    a.fill('input[name=code]', 'framboise'); a.fill('input[name=code2]', 'framboise')
+    a.screenshot(path=SHOTS / '01-premiere-ouverture.png')
+    a.get_by_role('button', name='Créer notre foyer').click()
     a.locator('.hero h1', has_text='Bonjour Adrien').wait_for()
-    ok('Compte Adrien créé, foyer créé, accueil affiché')
+    a.reload(); a.locator('.hero h1', has_text='Bonjour Adrien').wait_for()
+    ok('Première ouverture : « Je suis Adrien » + code, foyer créé ; après rechargement, reconnu directement')
     a.screenshot(path=SHOTS / '03-accueil-mobile.png', full_page=True)
 
     # données initiales
@@ -146,19 +144,19 @@ with sync_playwright() as p:
     a.locator('#sheet [data-act=close-sheet]').first.click()
     ok('Fréquence d’une série modifiable depuis l’interface')
 
-    # ---------------- 5. Deuxième compte : Ilona rejoint avec le code
-    a.goto(BASE + '#/foyer')
-    code = a.locator('.code').inner_text().strip()
-    a.screenshot(path=SHOTS / '10-foyer-invitation.png', full_page=True)
+    # ---------------- 5. Ilona sur son téléphone : « Je suis Ilona » + code
     b = ctx.new_page(); setup(b, 'Ilona')
-    b.goto(BASE + '?invitation=' + code)
-    b.fill('input[name=email]', 'ilona@test.local'); b.fill('input[name=password]', 'motdepasse-ilona')
-    b.get_by_role('button', name='Créer mon compte').click()
-    expect(b.locator('input[name=code]')).to_have_value(code)
-    b.get_by_role('button', name='Rejoindre').click()
+    b.goto(BASE)
+    b.locator('form[data-form=enter]').wait_for()
+    b.locator('label.who', has_text='Je suis Ilona').click()
+    b.fill('input[name=code]', 'mauvais'); b.get_by_role('button', name='Entrer').click()
+    expect(b.locator('.notice.warn')).to_contain_text('Code du foyer incorrect')
+    b.screenshot(path=SHOTS / '10-qui-es-tu.png')
+    b.fill('input[name=code]', 'framboise'); b.get_by_role('button', name='Entrer').click()
     b.locator('.hero h1', has_text='Bonjour Ilona').wait_for()
+    b.reload(); b.locator('.hero h1', has_text='Bonjour Ilona').wait_for()
     expect(b.locator('.person-card.p-adrien .task', has_text='Réparer le lit')).to_be_visible()
-    ok('Ilona rejoint avec le code d’invitation et voit les tâches du foyer')
+    ok('Ilona : mauvais code refusé, bon code accepté, reconnue après rechargement, voit les tâches du foyer')
     b.screenshot(path=SHOTS / '11-accueil-ilona.png', full_page=True)
     # synchronisation : Ilona ajoute un produit, Adrien le voit
     b.goto(BASE + '#/courses')
@@ -184,7 +182,11 @@ with sync_playwright() as p:
     b.locator('.proposal').first.wait_for()
     texts = b.locator('.proposal').all_inner_texts()
     assert texts and not any('Attribuer → Ilona' in t for t in texts), 'rien ne doit être attribué à Ilona pendant son absence'
-    assert all('lun.' in t.split('Reporter → Ilona le ')[1][:5] for t in texts if 'Reporter → Ilona' in t), 'report seulement après son retour'
+    import datetime as _dt, zoneinfo as _zi
+    _t = _dt.datetime.now(_zi.ZoneInfo('Europe/Paris')).date()
+    _absent = {f"{d.day} " for d in (_t + _dt.timedelta(days=i) for i in range(7 - _t.weekday()))}
+    assert all(t.split('Reporter → Ilona le ')[1].split(' ')[1] + ' ' not in _absent for t in texts if 'Reporter → Ilona' in t), 'report seulement après son retour'
+
     assert any('Ilona absente' in t for t in texts)
     b.screenshot(path=SHOTS / '13-repartition-absence.png', full_page=True)
     b.get_by_role('button', name='Appliquer la sélection').click()
@@ -251,6 +253,39 @@ with sync_playwright() as p:
     a.screenshot(path=SHOTS / '16-inventaire.png', full_page=True)
     ok('Cocher ne touche pas l’inventaire ; « Ranger les achats » l’alimente ; diminution du stock')
 
+
+    # ---------------- 8 bis. Repas ↔ inventaire ↔ courses
+    a.goto(BASE + '#/repas'); a.get_by_role('tab', name='Avec ce qu’on a').click()
+    card = a.locator('.sugg', has_text='Curry de légumes')
+    expect(card).to_contain_text('Il manque 1 ingrédient')
+    expect(card.locator('.ing-missing')).to_contain_text('Lait de coco')
+    a.screenshot(path=SHOTS / '17-avec-ce-quon-a.png', full_page=True)
+    ok('« Avec ce qu’on a » : Curry classé, lait de coco signalé manquant')
+    a.goto(BASE + '#/today')
+    a.locator('.meal-row', has_text='Curry de légumes').get_by_role('button', name=re.compile('Marquer')).click()
+    sheet = a.locator('#sheet')
+    riz = sheet.locator('.cook-line', has_text='Riz')
+    expect(riz.locator('input[name^=amt]')).to_have_value('0,3')
+    car = sheet.locator('.cook-line', has_text='Carottes')
+    expect(car.locator('input[name=shop]')).to_be_checked()
+    a.screenshot(path=SHOTS / '18-cuisiner.png', full_page=True)
+    sheet.get_by_role('button', name='Valider et mettre à jour l’inventaire').click()
+    toast_wait(a, 'mis à jour dans l’inventaire')
+    expect(a.locator('.meal-row', has_text='Curry de légumes').locator('.cook-chip')).to_be_visible()
+    a.goto(BASE + '#/stock')
+    expect(a.locator('.inv-row', has_text='Riz')).to_contain_text('0,45 kg')
+    expect(a.locator('.inv-row', has_text='Carottes').first).to_contain_text('0')
+    a.goto(BASE + '#/courses')
+    expect(a.locator('.shop-row:not(.done)', has_text='Carottes')).to_have_count(1)
+    ok('Repas cuisiné : riz 0,75 → 0,45 kg, carottes épuisées ajoutées aux courses')
+    a.goto(BASE + '#/today')
+    a.locator('.meal-row', has_text='Curry de légumes').locator('.cook-chip').click()
+    a.locator('#confirm-ok').click()
+    toast_wait(a, 'remis dans l’inventaire')
+    a.goto(BASE + '#/stock')
+    expect(a.locator('.inv-row', has_text='Riz')).to_contain_text('0,75 kg')
+    ok('Annulation : les quantités reviennent dans l’inventaire')
+
     # ---------------- 9. Suppression importante → confirmation
     a.goto(BASE + '#/maison'); a.get_by_role('tab', name='Récurrences').click()
     a.locator('.series-row', has_text='Nettoyer Valérie').click()
@@ -277,10 +312,12 @@ with sync_playwright() as p:
     desk.add_init_script(FAKE); desk.route('**/*', route)
     d = desk.new_page(); setup(d, 'Bureau')
     d.goto(BASE)
-    d.fill('input[name=email]', 'adrien@test.local'); d.fill('input[name=password]', 'motdepasse-test')
-    d.get_by_role('button', name='Se connecter').click()
+    d.locator('label.who', has_text='Je suis Adrien').click()
+    d.fill('input[name=code]', 'framboise'); d.get_by_role('button', name='Entrer').click()
     d.locator('.hero').wait_for()
-    ok('Connexion avec un compte existant')
+    d.goto(BASE + '#/foyer')
+    expect(d.locator('.member.p-adrien')).to_contain_text('2 appareils')
+    ok('Adrien sur un 2e appareil (ordinateur) : reconnu, 2 appareils listés')
     for r, n in [('today', '30-accueil'), ('maison', '31-maison'), ('repas', '32-repas'), ('courses', '33-courses')]:
         d.goto(BASE + '#/' + r); d.wait_for_timeout(150)
         d.screenshot(path=SHOTS / f'{n}-bureau.png', full_page=True)

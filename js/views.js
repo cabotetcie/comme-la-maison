@@ -1,7 +1,7 @@
 // Rendu des écrans principaux (chaînes HTML ; les interactions passent par data-act).
 import * as L from './logic.js';
 import { icon } from './icons.js';
-import { st, ui, esc, today, me, other, locations, personChip, prioChip, progressBar, empty, opts } from './core.js';
+import { st, ui, esc, today, me, other, locations, staples, personChip, prioChip, progressBar, empty, opts } from './core.js';
 
 const P = L.PERSON_LABEL;
 
@@ -101,11 +101,11 @@ export function viewToday() {
       ${['dejeuner', 'diner'].map((slot) => {
         const m = meals.find((x) => x.slot === slot);
         if (!m && slot === 'dejeuner') return '';
-        return `<button class="meal-line" data-act="meal-edit" data-date="${t}" data-slot="${slot}">
+        return `<div class="meal-row"><button class="meal-line" data-act="meal-edit" data-date="${t}" data-slot="${slot}">
           <span class="meal-slot">${slot === 'diner' ? 'Dîner' : 'Déjeuner'}</span>
           <span>${m ? (m.no_meal ? '<em>Pas de repas à prévoir</em>' : esc(mealTitle(m))) : '<em class="muted">Rien de prévu — ajouter</em>'}</span>
           ${m && !m.no_meal ? `<span class="chip">${icon('users')}${m.servings}</span>` : ''}
-        </button>`;
+        </button>${m ? cookButton(m) : ''}</div>`;
       }).join('')}
     </section>
     <a class="card shop-quick" href="#/courses">
@@ -331,7 +331,7 @@ export function viewDispos() {
 }
 function memberPrefs(p) {
   const m = st.members.find((x) => x.person === p);
-  if (!m) return `<div class="sub-card"><strong>${P[p]}</strong><p class="muted small">${P[p]} n’a pas encore rejoint le foyer. La répartition lui réserve 60 min par jour par défaut.</p></div>`;
+  if (!m) return `<div class="sub-card"><strong>${P[p]}</strong><p class="muted small">Réglages indisponibles.</p></div>`;
   return `<form class="sub-card stack" data-form="member-prefs" data-person="${p}">
     <strong>${P[p]}</strong>
     <label class="field"><span class="label">Temps habituel pour les tâches, par jour (min)</span>
@@ -343,8 +343,10 @@ function memberPrefs(p) {
 
 // ------------------------------------------------------------ Repas
 export function viewRepas() {
-  const tabs = `<div class="tabs" role="tablist"><button role="tab" aria-selected="${ui.repasTab === 'semaine'}" data-act="repas-tab" data-tab="semaine">Menu de la semaine</button><button role="tab" aria-selected="${ui.repasTab === 'idees'}" data-act="repas-tab" data-tab="idees">Idées de repas</button></div>`;
-  return `<div class="page-head"><h1>${icon('utensils')}Repas</h1></div>${tabs}${ui.repasTab === 'semaine' ? repasSemaine() : repasIdees()}`;
+  const T = { semaine: 'Menu de la semaine', placards: 'Avec ce qu’on a', idees: 'Idées de repas' };
+  const tabs = `<div class="tabs" role="tablist">${Object.entries(T).map(([k, v]) => `<button role="tab" aria-selected="${ui.repasTab === k}" data-act="repas-tab" data-tab="${k}">${v}</button>`).join('')}</div>`;
+  const body = ui.repasTab === 'placards' ? repasPlacards() : ui.repasTab === 'idees' ? repasIdees() : repasSemaine();
+  return `<div class="page-head"><h1>${icon('utensils')}Repas</h1></div>${tabs}${body}`;
 }
 function repasSemaine() {
   const ws = L.addDays(L.startOfWeek(today()), ui.menuWeek * 7);
@@ -360,6 +362,7 @@ function repasSemaine() {
         <span class="meal-slot">${label}</span>
         <strong>${m.no_meal ? 'Pas de repas à prévoir' : esc(mealTitle(m))}</strong>
         <span class="muted small">${m.no_meal ? '' : `${m.servings} pers.`}${r?.prep_min ? ` · ${r.prep_min} min` : ''}${m.notes ? ' · ' + esc(m.notes) : ''}</span></button>
+      ${cookButton(m)}
       <button class="icon-btn" data-act="meal-move" data-id="${m.id}" aria-label="Déplacer">${icon('move')}</button>
       <button class="icon-btn" data-act="meal-clear" data-id="${m.id}" aria-label="Retirer">${icon('x')}</button></div>`;
   };
@@ -372,6 +375,59 @@ function repasSemaine() {
   <div class="menu-grid">${days.map((d) => `<section class="card day-meals ${d === today() ? 'is-today' : ''}">
     <h3>${esc(L.fmtLongDate(d))}</h3>${slot(d, 'dejeuner')}${slot(d, 'diner')}</section>`).join('')}</div>`;
 }
+
+/** Bouton « Cuisiné » d'un repas (déduit les ingrédients de l'inventaire). */
+export function cookButton(m) {
+  if (m.no_meal) return '';
+  if (m.cooked) return `<button class="chip state-done cook-chip" data-act="meal-uncook" data-id="${m.id}" title="Annuler : remettre les ingrédients dans l’inventaire">${icon('check')}Cuisiné</button>`;
+  const r = m.recipe_id && st.recipes.find((x) => x.id === m.recipe_id);
+  if (!r || !r.ingredients.length) return '';
+  return `<button class="btn small cook-btn" data-act="meal-cook" data-id="${m.id}" aria-label="Marquer « ${esc(mealTitle(m))} » comme cuisiné et déduire les ingrédients">${icon('utensils')}<span>Cuisiné</span></button>`;
+}
+
+const ING_STATE = {
+  ok: ['check', 'En stock', 'ing-ok'], manual: ['check', 'En stock (quantité non suivie)', 'ing-ok'],
+  short: ['alert', 'Pas assez', 'ing-short'], missing: ['x', 'Manquant', 'ing-missing'], staple: ['check', 'Basique', 'ing-staple'],
+};
+function repasPlacards() {
+  const t = today();
+  const all = L.recipeSuggestions(st.recipes, st.inventory, t, staples());
+  const withoutIngs = st.recipes.filter((r) => !r.ingredients.some((g) => g.name)).length;
+  const shown = ui.readyOnly ? all.filter((x) => x.ready) : all;
+  const ready = all.filter((x) => x.ready).length;
+  const expiring = st.inventory.filter((x) => ['soon', 'expired'].includes(L.expiryStatus(x.expires_on, t)?.level) && Number(x.qty ?? 1) > 0);
+  const head = `<p class="muted lead">Vos idées de repas classées selon ce qu’il y a dans l’inventaire : d’abord celles que vous pouvez faire tout de suite, puis celles où il manque peu. Les produits qui périment bientôt sont mis en avant.</p>
+    ${expiring.length ? `<div class="notice warn">${icon('alert')}<div><strong>À utiliser vite</strong><p>${expiring.map((x) => `${esc(x.name)} (${esc(L.expiryStatus(x.expires_on, t).label.toLowerCase())})`).join(' · ')}</p></div></div>` : ''}
+    <div class="page-actions"><label class="toggle"><input type="checkbox" data-change="ready-only" ${ui.readyOnly ? 'checked' : ''}><span>${icon('check')}Seulement les recettes faisables (${ready})</span></label></div>`;
+  if (!all.length) {
+    return head + empty(st.recipes.length
+      ? `Aucune idée de repas n’a encore d’ingrédients. Ajoutez-les dans « Idées de repas » pour que l’app puisse les comparer à vos placards.`
+      : 'La bibliothèque d’idées est vide : ajoutez vos recettes avec leurs ingrédients dans « Idées de repas ».', 'utensils',
+      `<button class="btn" data-act="repas-tab" data-tab="idees">${icon('plus')}Aller aux idées de repas</button>`);
+  }
+  return head + `<div class="recipe-grid">${shown.map((x) => {
+    const r = x.recipe; const toBuy = x.missing.length + x.short.length;
+    const badge = x.ready ? `<span class="chip state-done">${icon('check')}Tout est là</span>`
+      : `<span class="chip ${x.missing.length ? 'late' : 'soon'}">${icon('cart')}Il manque ${toBuy} ingrédient${toBuy > 1 ? 's' : ''}</span>`;
+    return `<article class="card recipe sugg ${x.ready ? 'is-ready' : ''}">
+      <div class="section-head"><h2>${esc(r.name)}</h2>${r.favorite ? `<span class="chip">${icon('star')}Favori</span>` : ''}</div>
+      <div class="detail-meta">${badge}<span class="chip">${x.have}/${x.total} en stock</span>${r.prep_min ? `<span class="chip">${icon('clock')}${r.prep_min} min</span>` : ''}</div>
+      ${x.rescue.length ? `<p class="small rescue">${icon('alert')}Utilise : ${x.rescue.map((y) => `<strong>${esc(y.name)}</strong> (${esc(y.label.toLowerCase())})`).join(', ')}</p>` : ''}
+      <ul class="ing-list">${x.plan.map((l) => {
+        const [ic, lab, cls] = ING_STATE[l.status];
+        const need = L.fmtQty(l.qty, l.unit);
+        const extra = l.status === 'short' ? ` — il manque ${esc(L.fmtQty(l.missing.qty, l.missing.unit) || '?')}`
+          : l.status === 'ok' && !l.exact && l.uses[0] ? ` — ${esc(l.uses[0].name)}` : '';
+        return `<li class="${cls}">${icon(ic)}<span><span class="sr">${lab} : </span>${esc(l.name)}${need ? ` <span class="muted">${esc(need)}</span>` : ''}${extra}</span></li>`;
+      }).join('')}</ul>
+      <div class="row-actions">
+        <button class="btn small primary" data-act="recipe-cook" data-id="${r.id}">${icon('utensils')}Cuisiner maintenant</button>
+        <button class="btn small" data-act="recipe-plan" data-id="${r.id}">${icon('calendar')}Planifier</button>
+        ${toBuy ? `<button class="btn small ghost" data-act="sugg-shop" data-id="${r.id}">${icon('cart')}Manquants aux courses</button>` : ''}
+      </div></article>`;
+  }).join('')}</div>${withoutIngs ? `<p class="muted small">${withoutIngs} idée${withoutIngs > 1 ? 's' : ''} sans ingrédients ne ${withoutIngs > 1 ? 'sont' : 'est'} pas comparée${withoutIngs > 1 ? 's' : ''}.</p>` : ''}`;
+}
+
 function repasIdees() {
   const q = L.norm(ui.recipeQuery);
   const rs = st.recipes.filter((r) => (!ui.favOnly || r.favorite) && (!q || L.norm(r.name).includes(q)))
@@ -387,6 +443,7 @@ function repasIdees() {
     ${r.ingredients.length ? `<p class="small">${r.ingredients.slice(0, 6).map((g) => esc(g.name)).join(', ')}${r.ingredients.length > 6 ? '…' : ''}</p>` : ''}
     ${r.notes ? `<p class="muted small">${esc(r.notes)}</p>` : ''}
     <div class="row-actions"><button class="btn small" data-act="recipe-plan" data-id="${r.id}">${icon('calendar')}Planifier</button>
+      ${r.ingredients.length ? `<button class="btn small" data-act="recipe-cook" data-id="${r.id}">${icon('utensils')}Je l’ai cuisinée</button>` : ''}
       <button class="btn small ghost" data-act="recipe-edit" data-id="${r.id}">${icon('edit')}Modifier</button></div>
   </article>`).join('')}</div>` : empty(st.recipes.length ? 'Aucune idée ne correspond.' : 'La bibliothèque est vide : ajoutez vos premières idées de repas.', 'utensils')}`;
 }
@@ -453,32 +510,35 @@ export function viewStock() {
 
 // ------------------------------------------------------------ Foyer
 export function viewFoyer() {
-  const full = L.PEOPLE.every((p) => st.members.some((m) => m.person === p));
   const locs = st.hh?.settings?.locations || {};
-  const link = `${location.origin}${location.pathname}?invitation=${st.hh?.invite_code || ''}`;
+  const devices = (p) => st.devices.filter((d) => d.person === p).length;
   return `<div class="page-head"><h1>${icon('users')}Foyer</h1></div>
   <section class="card">
     <form data-form="hh-name" class="inline-form"><label class="field grow"><span class="label">Nom du foyer</span><input name="name" value="${esc(st.hh?.name || '')}" maxlength="60" required></label><button class="btn">Enregistrer</button></form>
-    <div class="members">${L.PEOPLE.map((p) => {
-      const m = st.members.find((x) => x.person === p);
-      return `<div class="member p-${p}">${icon('user')}<div><strong>${P[p]}${p === me() ? ' (vous)' : ''}</strong><span class="muted small">${m ? 'Membre du foyer' : 'Invitation en attente'}</span></div></div>`;
-    }).join('')}</div>
+    <div class="members">${L.PEOPLE.map((p) => `<div class="member p-${p}">${icon('user')}<div><strong>${P[p]}${p === me() ? ' (cet appareil)' : ''}</strong>
+      <span class="muted small">${devices(p) ? `Reconnue sur ${devices(p)} appareil${devices(p) > 1 ? 's' : ''}`.replace('Reconnue', p === 'adrien' ? 'Reconnu' : 'Reconnue') : `Pas encore ${p === 'adrien' ? 'connecté' : 'connectée'}`}</span></div></div>`).join('')}</div>
+    <p class="muted small">Pour ajouter un appareil : ouvrez l’app dessus, choisissez « Je suis … » et tapez le code du foyer. C’est à faire une seule fois par appareil.</p>
   </section>
-  ${full ? '' : `<section class="card invite">
-    ${sectionHead(`Inviter ${P[other()]}`, '', 'users')}
-    <ol class="steps"><li>${P[other()]} ouvre l’application et crée son compte avec sa propre adresse e-mail.</li>
-      <li>Puis choisit « Rejoindre un foyer » et saisit ce code :</li></ol>
-    <div class="code" aria-label="Code d’invitation">${esc(st.hh?.invite_code || '')}</div>
-    <div class="row-actions"><button class="btn primary" data-act="copy-invite" data-text="${esc(link)}">${icon('copy')}Copier le lien d’invitation</button></div>
-  </section>`}
+  <section class="card">${sectionHead('Code du foyer', '', 'scale')}
+    <p class="muted small">Ce code protège l’accès : sans lui, personne ne peut entrer, même avec l’adresse du site. Le changer n’affecte pas les appareils déjà reconnus.</p>
+    <form data-form="hh-code" class="stack">
+      <div class="grid2"><label class="field"><span class="label">Nouveau code</span><input type="password" name="code" minlength="4" required autocomplete="new-password"></label>
+      <label class="field"><span class="label">Confirmer</span><input type="password" name="code2" minlength="4" required autocomplete="new-password"></label></div>
+      <div><button class="btn">Changer le code</button></div></form>
+  </section>
+  <section class="card">${sectionHead('Basiques toujours disponibles', '', 'utensils')}
+    <p class="muted small">Ces ingrédients ne sont jamais comptés comme manquants dans les recettes, même s’ils ne sont pas dans l’inventaire.</p>
+    <div class="chips-list">${staples().map((v) => `<span class="chip">${esc(v)}<button class="chip-x" data-act="staple-delete" data-name="${esc(v)}" aria-label="Retirer ${esc(v)}">${icon('x')}</button></span>`).join('') || '<span class="muted small">Aucun.</span>'}</div>
+    <form data-form="staple-add" class="inline-form"><label class="field grow"><span class="label">Ajouter un basique</span><input name="name" maxlength="40" placeholder="Ex. huile d’olive, ail" required></label><button class="btn">${icon('plus')}Ajouter</button></form>
+  </section>
   <section class="card">${sectionHead('Emplacements de l’inventaire', '', 'box')}
     <div class="chips-list">${Object.values(L.DEFAULT_LOCATIONS).map((v) => `<span class="chip">${esc(v)}</span>`).join('')}
       ${Object.entries(locs).map(([k, v]) => `<span class="chip">${esc(v)}<button class="chip-x" data-act="loc-delete" data-loc="${esc(k)}" aria-label="Supprimer ${esc(v)}">${icon('x')}</button></span>`).join('')}</div>
     <form data-form="loc-add" class="inline-form"><label class="field grow"><span class="label">Nouvel emplacement</span><input name="name" maxlength="40" placeholder="Ex. Cave, Cellier" required></label><button class="btn">${icon('plus')}Ajouter</button></form>
   </section>
-  <section class="card">${sectionHead('Compte', '', 'user')}
-    <p class="small">Connecté·e en tant que <strong>${esc(st.session?.user?.email || '')}</strong> (${P[me()]}).</p>
+  <section class="card">${sectionHead('Cet appareil', '', 'user')}
+    <p class="small">Reconnu comme <strong>${P[me()]}</strong>.</p>
     <p class="muted small">Données initiales importées ${st.hh?.settings?.seeded_on ? 'le ' + esc(L.fmtLongDate(st.hh.settings.seeded_on)) : ''} · synchronisation ${ui.online ? 'active' : 'en reconnexion…'}</p>
-    <button class="btn" data-act="logout">${icon('logout')}Se déconnecter</button>
+    <button class="btn" data-act="logout">${icon('swap')}Changer de personne sur cet appareil</button>
   </section>`;
 }

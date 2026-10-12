@@ -13,7 +13,7 @@
     shopping_items: { qty: null, unit: null, note: null, category: 'autre', checked: false, checked_at: null, checked_by: null, archived: false, seed_key: null },
     inventory_items: { category: 'autre', qty: null, unit: null, location: 'placards', expires_on: null, low_threshold: null },
     recipes: { ingredients: [], servings: 2, prep_min: null, notes: null, favorite: false },
-    meals: { recipe_id: null, title: null, servings: 2, notes: null, no_meal: false },
+    meals: { recipe_id: null, title: null, servings: 2, notes: null, no_meal: false, cooked: null },
     projects: { description: null, status: 'actif' }, inbox_items: { note: null, created_by: null },
     availabilities: { capacity_min: null, note: null },
   };
@@ -105,26 +105,36 @@
   window.__QG_CLIENT__ = {
     from: (t) => new Q(t),
     async rpc(name, args) {
-      const db = load(); db.t.members = db.t.members || []; db.t.households = db.t.households || [];
-      if (!uid()) return err('Connexion requise');
-      if (db.t.members.some((m) => m.user_id === uid())) return err('Ce compte fait déjà partie d’un foyer');
-      const mem = (h, person) => ({ household_id: h, user_id: uid(), person, daily_capacity_min: 60, preferred_categories: [], avoided_categories: [] });
-      if (name === 'create_household') {
-        const h = uuid(); db.t.households.push({ id: h, name: args.p_name, invite_code: Math.random().toString(16).slice(2, 8).toUpperCase(), settings: { seeded: true, seeded_on: today() } });
-        db.t.members.push(mem(h, args.p_person)); seed(db, h); persist(db); return { data: h, error: null };
+      const db = load(); db.t.members = db.t.members || []; db.t.households = db.t.households || []; db.t.people = db.t.people || [];
+      if (name === 'household_exists') return { data: db.t.households.length > 0, error: null };
+      if (!uid()) return err('Session introuvable');
+      const hh = db.t.households[0];
+      if (name === 'setup_household') {
+        if (hh) return err('Le foyer existe déjà : saisissez son code');
+        if (String(args.p_code).trim().length < 4) return err('Le code du foyer doit contenir au moins 4 caractères');
+        const h = uuid(); db.t.households.push({ id: h, name: 'Le QG', code: String(args.p_code).trim(), settings: { seeded: true, seeded_on: today() } });
+        db.t.people.push(...['ilona', 'adrien'].map((p) => ({ household_id: h, person: p, daily_capacity_min: 60, preferred_categories: [], avoided_categories: [] })));
+        db.t.members.push({ household_id: h, user_id: uid(), person: args.p_person });
+        seed(db, h); persist(db); return { data: h, error: null };
       }
-      if (name === 'join_household') {
-        const hh = db.t.households.find((x) => x.invite_code === String(args.p_code).trim().toUpperCase());
-        if (!hh) return err('Code d’invitation introuvable');
-        const taken = db.t.members.filter((m) => m.household_id === hh.id).map((m) => m.person);
-        if (taken.length >= 2) return err('Ce foyer est déjà complet');
-        const p = taken.includes('ilona') ? 'adrien' : 'ilona';
-        db.t.members.push(mem(hh.id, p)); persist(db); bc.postMessage('members'); return { data: { household_id: hh.id, person: p }, error: null };
+      if (name === 'enter_household') {
+        if (!hh) return err('Le foyer n’existe pas encore');
+        if (String(args.p_code).trim() !== hh.code) return err('Code du foyer incorrect');
+        db.t.members = db.t.members.filter((m) => m.user_id !== uid());
+        db.t.members.push({ household_id: hh.id, user_id: uid(), person: args.p_person });
+        persist(db); bc.postMessage('members'); return { data: hh.id, error: null };
       }
+      if (name === 'change_household_code') { hh.code = String(args.p_new).trim(); persist(db); return { data: null, error: null }; }
+      if (name === 'leave_device') { db.t.members = db.t.members.filter((m) => m.user_id !== uid()); persist(db); return { data: null, error: null }; }
       return err('rpc inconnue');
     },
     auth: {
       async getSession() { return { data: { session } }; },
+      async signInAnonymously() {
+        const u = { id: uuid() }; const db = load(); db.users.push(u); persist(db);
+        session = { user: { id: u.id, is_anonymous: true } }; sessionStorage.setItem('fake-session', JSON.stringify(session)); authEvent('SIGNED_IN');
+        return { data: { session }, error: null };
+      },
       onAuthStateChange(cb) { listeners.push(cb); return { data: { subscription: { unsubscribe() {} } } }; },
       async signUp({ email, password }) {
         const db = load(); if (db.users.some((u) => u.email === email)) return err('User already registered');

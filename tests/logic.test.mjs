@@ -213,3 +213,52 @@ test('inventaire : péremption et stock bas', () => {
   assert.ok(L.isLowStock({ qty: 1, low_threshold: 2 }));
   assert.ok(!L.isLowStock({ qty: 3, low_threshold: 2 }));
 });
+
+// ------------------------------------------------ repas ↔ inventaire
+const INV = [
+  { id: 'riz', name: 'Riz basmati', qty: 1, unit: 'kg', location: 'placards' },
+  { id: 'coco1', name: 'Lait de coco', qty: 40, unit: 'cl', expires_on: '2026-10-20' },
+  { id: 'coco2', name: 'Lait de coco', qty: 20, unit: 'cl', expires_on: '2026-10-13' },
+  { id: 'car', name: 'Carottes', qty: 2, unit: null, low_threshold: 1 },
+  { id: 'curry', name: 'Curry', qty: null, unit: null },
+  { id: 'vide', name: 'Oignons', qty: 0, unit: null },
+  { id: 'lavoine', name: 'Lait d’avoine', qty: 1, unit: 'l' },
+];
+const CURRY = { id: 'r1', name: 'Curry de légumes', servings: 2, ingredients: [
+  { name: 'riz basmati', qty: 300, unit: 'g' }, { name: 'lait de coco', qty: 40, unit: 'cl' },
+  { name: 'carotte', qty: 3 }, { name: 'curry', qty: 1, unit: 'cs' }, { name: 'sel' }, { name: 'oignon', qty: 1 },
+] };
+
+test('rapprochement des noms : exact d’abord, sinon nom plus précis en stock ; « lait » ≠ « lait d’avoine » si un lait existe', () => {
+  assert.deepEqual(L.matchInventory('riz', INV).map((x) => x.id), ['riz']);
+  assert.deepEqual(L.matchInventory('Lait de coco', INV).map((x) => x.id), ['coco2', 'coco1'], 'le plus tôt périmé d’abord');
+  assert.deepEqual(L.matchInventory('oignons', INV), [], 'stock à 0 ignoré');
+  assert.deepEqual(L.matchInventory('tomates', INV), []);
+  assert.ok(L.isStaple('Sel'));
+});
+
+test('cuisiner une recette : quantités déduites dans l’unité du stock, réparties sur plusieurs produits', () => {
+  const plan = L.consumptionPlan(CURRY, 2, INV);
+  const by = (n) => plan.find((l) => l.name === n);
+  assert.deepEqual(by('riz basmati').uses.map((u) => [u.id, u.amount, u.after]), [['riz', 0.3, 0.7]]);
+  assert.deepEqual(by('lait de coco').uses.map((u) => [u.id, u.amount, u.after]), [['coco2', 20, 0], ['coco1', 20, 20]]);
+  assert.ok(by('lait de coco').uses[0].low, 'épuisé → proposé pour les courses');
+  assert.equal(by('carotte').status, 'short');
+  assert.deepEqual(by('carotte').missing, { qty: 1, unit: '' });
+  assert.equal(by('curry').status, 'manual', 'quantité inconnue en stock : à ajuster à la main');
+  assert.equal(by('sel').status, 'staple');
+  assert.equal(by('oignon').status, 'missing');
+  // pour 4 personnes, tout est doublé
+  assert.equal(L.consumptionPlan(CURRY, 4, INV).find((l) => l.name === 'riz basmati').uses[0].amount, 0.6);
+});
+
+test('recettes réalisables : complètes en premier, anti-gaspi mis en avant', () => {
+  const pates = { id: 'r2', name: 'Riz au lait de coco', servings: 2, ingredients: [{ name: 'riz', qty: 200, unit: 'g' }, { name: 'lait de coco', qty: 20, unit: 'cl' }] };
+  const omelette = { id: 'r3', name: 'Omelette', servings: 2, ingredients: [{ name: 'oeufs', qty: 4 }, { name: 'beurre', qty: 10, unit: 'g' }] };
+  const vide = { id: 'r4', name: 'Sans ingrédients', servings: 2, ingredients: [] };
+  const s = L.recipeSuggestions([omelette, CURRY, pates, vide], INV, '2026-10-12');
+  assert.deepEqual(s.map((x) => x.recipe.id), ['r2', 'r1', 'r3']);
+  assert.ok(s[0].ready);
+  assert.deepEqual(s[0].rescue.map((x) => x.id), ['coco2']);
+  assert.deepEqual(s[2].missing.map((l) => l.name), ['oeufs', 'beurre']);
+});
