@@ -15,20 +15,19 @@ Pile technique : HTML/CSS/JavaScript sans étape de build, **Supabase** pour la 
 
 ## 1. Créer la base Supabase (≈ 10 min, une seule fois)
 
-1. Allez sur <https://supabase.com> et cliquez **New project**.
-   - Nom : `le-qg`
-   - Région : *West EU (Paris)*
-   - Mot de passe de la base : cliquez *Generate*. Il ne sert pas à l’application.
-2. Une fois le projet prêt, ouvrez **SQL Editor** → **New query**.
-3. Collez **tout** le contenu de `supabase/schema.sql`, puis cliquez **Run**.
-   - Vous devez voir `Success. No rows returned`.
-   - Le script peut être relancé sans risque.
-4. Ouvrez **Authentication → Sign In / Providers** (ou *Providers* selon la version).
-   - Activez **Allow anonymous sign-ins**.
-   - Cliquez **Save**.
-   - Il n’y a pas de comptes e-mail : chaque appareil reçoit une session anonyme, rattachée à Ilona ou Adrien après la saisie du code du foyer.
-5. Ouvrez **Project Settings → API**. Copiez la **Project URL** et la clé **anon public**.
-   - Ne prenez **pas** la clé `service_role`.
+1. Allez sur <https://supabase.com> → **New project**.
+   - Nom : `le-qg`. Région : *West EU (Paris)*.
+   - Notez le mot de passe de la base, mais il ne sert pas à l’application.
+2. Quand le projet est prêt, ouvrez **SQL Editor** → **New query**.
+3. Ouvrez le fichier `supabase/schema.sql` du projet, copiez **tout** son contenu, collez-le, puis cliquez **Run**.
+   - Résultat attendu : `Success. No rows returned`.
+   - Le script peut être relancé sans risque : il ne crée pas de doublons.
+4. **Authentication → Sign In / Providers → Email** : laissez *Enable Email provider* et *Confirm email* activés.
+5. **Authentication → URL Configuration** :
+   - *Site URL* : l’adresse GitHub Pages (étape 3). En attendant, mettez `http://localhost:5173`.
+   - *Redirect URLs* : ajoutez `http://localhost:5173/**` et, plus tard, `https://VOTRE-PSEUDO.github.io/le-qg/**`.
+6. **Project Settings → API** : copiez la **Project URL** et la clé **anon public**.
+   - Ne copiez **pas** la clé `service_role`. Elle ne doit jamais aller dans l’application.
 
 ## 2. Lancer l’application sur votre ordinateur
 
@@ -89,29 +88,27 @@ Ouvrez <http://localhost:5173> dans votre navigateur. Pour arrêter le serveur, 
 5. Onglet **Actions** → workflow « Publier Le QG ».
    - S’il n’a pas tourné, cliquez **Run workflow**.
    - Au bout d’environ 1 minute, l’adresse s’affiche : `https://VOTRE-PSEUDO.github.io/le-qg/`.
-6. Pour chaque mise à jour, faites un commit puis **Push origin** dans GitHub Desktop. Le site se republie tout seul.
+6. Retournez dans Supabase → **Authentication → URL Configuration**.
+   - Mettez cette adresse dans *Site URL*.
+   - Ajoutez-la dans *Redirect URLs* avec `**` à la fin.
+7. Pour chaque mise à jour, faites un commit puis **Push origin** dans GitHub Desktop. Le site se republie tout seul.
 
 ## 4. Premiers pas à deux
 
-1. La toute première fois, l’app affiche **« Première ouverture »**.
-   - Choisissez « Je suis Ilona » ou « Je suis Adrien ».
-   - Inventez ensemble un **code du foyer** de 4 caractères minimum, puis validez.
-   - Le foyer est créé. Le planning ménage, les deux tâches ponctuelles et la liste de courses de départ sont importés **une seule fois**.
-2. Sur chaque autre téléphone ou ordinateur, l’app demande **« Qui es-tu ? »**.
-   - On choisit son prénom et on tape le code du foyer.
-   - C’est à faire **une seule fois par appareil**, l’app s’en souvient ensuite.
-3. Sans le code, personne ne peut entrer, même avec l’adresse du site.
-   - Le code se change dans **Foyer**.
-   - **Foyer → Changer de personne sur cet appareil** permet de « déconnecter » un appareil.
-4. Pour installer l’app avec l’icône « comme à la maison » :
-   - iPhone : Safari → Partager → *Sur l’écran d’accueil*
-   - Android : Chrome → ⋮ → *Ajouter à l’écran d’accueil*
-   - Sur iPhone, l’app installée a sa propre mémoire. Il faut donc choisir « Je suis … » une fois dedans, même si c’était déjà fait dans Safari.
+1. **Adrien** ouvre l’application → *Créer un compte* avec **sa** propre adresse e-mail.
+   - Il confirme le lien reçu par e-mail, puis se connecte.
+2. *Créer notre foyer* → « Je suis Adrien ».
+   - Le planning ménage, les deux tâches ponctuelles et la liste de courses de départ sont importés **une seule fois**.
+3. Rubrique **Foyer** → *Copier le lien d’invitation* → envoyez-le à Ilona.
+4. **Ilona** ouvre le lien → crée **son** compte → le code est prérempli → *Rejoindre*.
+5. Sur téléphone, installez l’application comme une app, avec l’icône « comme à la maison » :
+   - iPhone : Safari → Partager → *Sur l’écran d’accueil*.
+   - Android : Chrome → ⋮ → *Ajouter à l’écran d’accueil*.
 
 ## 5. Ce que fait l’application
 
 - **Aujourd’hui** : la date, la progression d’Ilona, d’Adrien et du foyer (« 3 tâches sur 5 terminées »), les priorités du jour, les retards, les tâches de chacun, celles « à répartir », celles de la semaine sans jour fixé, les repas du jour et l’accès aux courses.
-- **Ajouter** (bouton rouge toujours visible) : tâche, action rapide, démarche administrative, achat maison, produit de courses, idée de repas ou idée de projet. Seul le titre est obligatoire.
+- **Ajouter** (bouton orange toujours visible) : tâche, action rapide, démarche administrative, achat maison, produit de courses, idée de repas ou idée de projet. Seul le titre est obligatoire.
 - **À organiser** : la boîte de réception commune. On donne un horizon en un geste, ou on range l’élément dans la bonne rubrique.
 - **Maison** : vues Aujourd’hui, Semaine, Par personne, Par projet, Plus tard, Récurrences et À replanifier.
   - Chaque occurrence se valide et se reporte seule.
@@ -147,21 +144,21 @@ Ouvrez <http://localhost:5173> dans votre navigateur. Pour arrêter le serveur, 
   - Fusion des ingrédients et prise en compte de l’inventaire.
 - `tests/db/test_schema.sql` : le schéma a été exécuté **deux fois** sur un vrai PostgreSQL 16.
   - Création du foyer et import initial : 21 tâches et 7 produits, sans doublon à la ré-exécution.
-  - Un seul foyer possible ; code du foyer de 4 caractères minimum, jamais lisible.
-  - Appareil inconnu : aucune donnée visible ; mauvais code refusé.
-  - Ilona sur deux appareils, Adrien sur un autre : mêmes données partagées.
-  - Unicité des occurrences ; identité d’un appareil non modifiable directement.
-  - Changement de code et retrait d’un appareil.
+  - Isolement des données avant invitation, puis arrivée d’Ilona.
+  - Partage entre les deux comptes.
+  - Refus pour un 3e compte.
+  - Unicité des occurrences.
+  - Identité et code d’invitation non modifiables.
 - `tests/ui/run.py` : parcours complet dans Chromium en taille téléphone (390 px) et ordinateur (1360 px), avec un faux client Supabase réservé aux tests.
-  - 16 étapes : première ouverture, « Qui es-tu ? » avec mauvais puis bon code, reconnaissance après rechargement, répartition, progression, capture, report d’occurrence, absence, menus vers courses, rangement des achats, confirmations.
+  - 16 étapes : création des deux comptes, répartition, progression, capture, report d’occurrence, absence, menus vers courses, rangement des achats, confirmations.
   - Aucun débordement horizontal sur mobile.
 
 Pour relancer le test d’interface : `npm start` dans un terminal, puis `python3 tests/ui/run.py` dans un autre. Il faut Python et Playwright.
 
 ## 7. Limites connues
 
-- La synchronisation en temps réel et les sessions d’appareil reposent sur Supabase. Elles fonctionneront une fois l’étape 1 faite.
+- La synchronisation en temps réel et la connexion par e-mail reposent sur Supabase. Elles fonctionneront une fois l’étape 1 faite.
   - Elles n’ont pas pu être testées ici contre un vrai projet Supabase.
   - La base a été testée sur PostgreSQL et l’interface avec un client simulé.
-- Si l’on efface les données du navigateur, l’appareil oublie qui vous êtes : il suffit de refaire « Je suis … » avec le code.
+- Le service d’e-mail intégré de Supabase est limité à quelques e-mails par heure. Pour deux comptes, cela suffit.
 - Pas de notifications push, pas de mode hors ligne : l’application a besoin d’une connexion.

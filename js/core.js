@@ -3,7 +3,7 @@ import * as L from './logic.js';
 import { icon } from './icons.js';
 
 export const st = {
-  session: null, me: null, hh: null, members: [], devices: [], tasks: [], occ: [], projects: [], inbox: [],
+  session: null, me: null, hh: null, members: [], tasks: [], occ: [], projects: [], inbox: [],
   avail: [], recipes: [], meals: [], shopping: [], inventory: [],
 };
 export const ui = {
@@ -60,8 +60,10 @@ export function errMsg(e) {
   const m = e?.message || String(e);
   if (/fetch|network|Load failed/i.test(m)) return 'Connexion impossible. Vérifiez le réseau puis réessayez.';
   if (/row-level security|permission denied/i.test(m)) return 'Accès refusé : cette donnée n’appartient pas à votre foyer.';
-  if (/anonymous sign-?ins? (are )?disabled/i.test(m)) return 'Connexion impossible : dans Supabase, activez « Allow anonymous sign-ins » (Authentication → Sign In / Providers).';
-  if (/rate limit/i.test(m)) return 'Trop d’essais en peu de temps. Patientez quelques minutes.';
+  if (/Invalid login credentials/i.test(m)) return 'E-mail ou mot de passe incorrect.';
+  if (/Email not confirmed/i.test(m)) return 'Adresse e-mail pas encore confirmée : ouvrez le lien reçu par e-mail.';
+  if (/User already registered/i.test(m)) return 'Un compte existe déjà avec cette adresse : connectez-vous.';
+  if (/Password should be/i.test(m)) return 'Mot de passe trop court (8 caractères minimum).';
   return m;
 }
 /** Exécute une écriture : notification de confirmation ou d'erreur, puis nouvel affichage. */

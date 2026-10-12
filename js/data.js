@@ -20,7 +20,7 @@ export async function client() {
 
 /** table Supabase → clé dans l'état local */
 export const TABLES = {
-  households: 'hh', people: 'members', members: 'devices', projects: 'projects', tasks: 'tasks', task_occurrences: 'occ',
+  households: 'hh', members: 'members', projects: 'projects', tasks: 'tasks', task_occurrences: 'occ',
   inbox_items: 'inbox', availabilities: 'avail', recipes: 'recipes', meals: 'meals',
   shopping_items: 'shopping', inventory_items: 'inventory',
 };
@@ -28,7 +28,7 @@ export const TABLES = {
 function check({ data, error }) { if (error) throw error; return data; }
 
 export async function loadTable(table, hid, today) {
-  let q = sb.from(table).select(table === 'households' ? 'id,name,settings,created_at' : '*');   // code_hash n'est jamais lisible
+  let q = sb.from(table).select('*');
   q = table === 'households' ? q.eq('id', hid) : q.eq('household_id', hid);
   if (table === 'task_occurrences') { const d = addDays(today, -60); q = q.or(`occ_date.gte.${d},moved_to.gte.${d}`); }
   if (table === 'meals') q = q.gte('meal_date', addDays(today, -70));
@@ -47,11 +47,11 @@ export async function insert(table, row) {
 export async function update(table, id, patch) {
   return check(await sb.from(table).update(patch).eq('id', id).select().single());
 }
-export async function updatePerson(householdId, person, patch) {
-  return check(await sb.from('people').update(patch).eq('household_id', householdId).eq('person', person).select().single());
+export async function updateMember(householdId, person, patch) {
+  return check(await sb.from('members').update(patch).eq('household_id', householdId).eq('person', person).select().single());
 }
 export async function updateHousehold(id, patch) {
-  return check(await sb.from('households').update(patch).eq('id', id).select('id,name,settings,created_at').single());
+  return check(await sb.from('households').update(patch).eq('id', id).select().single());
 }
 export async function remove(table, id) {
   check(await sb.from(table).delete().eq('id', id));

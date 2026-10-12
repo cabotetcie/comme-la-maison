@@ -8,47 +8,29 @@
 create extension if not exists pgcrypto;
 
 -- ---------------------------------------------------------------------
--- Foyer (un seul), personnes (Ilona, Adrien) et appareils connectés
--- Pas de comptes e-mail : chaque appareil reçoit une session anonyme
--- Supabase, rattachée à « Ilona » ou « Adrien » après saisie du code du foyer.
+-- Foyer et membres
 -- ---------------------------------------------------------------------
 create table if not exists public.households (
   id          uuid primary key default gen_random_uuid(),
-  name        text not null default 'Le QG',
-  code_hash   text,
+  name        text not null default 'Notre foyer',
+  invite_code text not null unique default upper(substr(md5(gen_random_uuid()::text), 1, 6)),
   settings    jsonb not null default '{}'::jsonb,
+  created_by  uuid references auth.users(id) on delete set null,
   created_at  timestamptz not null default now()
 );
-alter table public.households add column if not exists code_hash text;
-alter table public.households drop column if exists invite_code;
-alter table public.households drop column if exists created_by;
-create unique index if not exists households_un_seul_foyer on public.households ((true));
 
--- Réglages de chaque personne (répartition)
-create table if not exists public.people (
+create table if not exists public.members (
   household_id         uuid not null references public.households(id) on delete cascade,
+  user_id              uuid not null references auth.users(id) on delete cascade,
   person               text not null check (person in ('ilona','adrien')),
   daily_capacity_min   int  not null default 60 check (daily_capacity_min between 0 and 1440),
   preferred_categories text[] not null default '{}',
   avoided_categories   text[] not null default '{}',
-  primary key (household_id, person)
-);
-
--- Appareils autorisés : une ligne par téléphone / ordinateur
-create table if not exists public.members (
-  household_id uuid not null references public.households(id) on delete cascade,
-  user_id      uuid not null references auth.users(id) on delete cascade,
-  person       text not null check (person in ('ilona','adrien')),
-  created_at   timestamptz not null default now(),
-  last_seen    timestamptz not null default now(),
+  created_at           timestamptz not null default now(),
   primary key (household_id, user_id),
+  unique (household_id, person),
   unique (user_id)
 );
-alter table public.members drop constraint if exists members_household_id_person_key;
-alter table public.members drop column if exists daily_capacity_min;
-alter table public.members drop column if exists preferred_categories;
-alter table public.members drop column if exists avoided_categories;
-alter table public.members add column if not exists last_seen timestamptz not null default now();
 
 -- ---------------------------------------------------------------------
 -- TAPP : projets, tâches / actions, occurrences des récurrences
@@ -224,25 +206,18 @@ drop policy if exists foyer_update on public.households;
 create policy foyer_update on public.households for update to authenticated
   using (public.is_member(id)) with check (public.is_member(id));
 revoke all on public.households from anon, authenticated;
-grant select (id, name, settings, created_at) on public.households to authenticated;   -- jamais code_hash
+grant select on public.households to authenticated;
 grant update (name, settings) on public.households to authenticated;
 
 alter table public.members enable row level security;
 drop policy if exists membres_select on public.members;
 create policy membres_select on public.members for select to authenticated using (public.is_member(household_id));
 drop policy if exists membres_update on public.members;
+create policy membres_update on public.members for update to authenticated
+  using (public.is_member(household_id)) with check (public.is_member(household_id));
 revoke all on public.members from anon, authenticated;
 grant select on public.members to authenticated;
-
-alter table public.people enable row level security;
-drop policy if exists personnes_select on public.people;
-create policy personnes_select on public.people for select to authenticated using (public.is_member(household_id));
-drop policy if exists personnes_update on public.people;
-create policy personnes_update on public.people for update to authenticated
-  using (public.is_member(household_id)) with check (public.is_member(household_id));
-revoke all on public.people from anon, authenticated;
-grant select on public.people to authenticated;
-grant update (daily_capacity_min, preferred_categories, avoided_categories) on public.people to authenticated;
+grant update (daily_capacity_min, preferred_categories, avoided_categories) on public.members to authenticated;
 
 do $$
 declare t text;
@@ -325,75 +300,46 @@ begin
 end $$;
 revoke all on function public.seed_household(uuid) from public, anon, authenticated;
 
-drop function if exists public.create_household(text, text);
-drop function if exists public.join_household(text);
-
--- Le foyer existe-t-il déjà ? (écran de première ouverture)
-create or replace function public.household_exists() returns boolean
-language sql stable security definer set search_path = public as $$
-  select exists (select 1 from households);
-$$;
-revoke all on function public.household_exists() from public;
-grant execute on function public.household_exists() to anon, authenticated;
-
--- Toute première ouverture : création du foyer et choix du code
-create or replace function public.setup_household(p_person text, p_code text) returns uuid
-language plpgsql security definer set search_path = public, extensions as $$
+-- Création du foyer par la première personne
+create or replace function public.create_household(p_name text, p_person text) returns uuid
+language plpgsql security definer set search_path = public as $$
 declare h uuid;
 begin
-  if auth.uid() is null then raise exception 'Session introuvable'; end if;
+  if auth.uid() is null then raise exception 'Connexion requise'; end if;
   if p_person not in ('ilona','adrien') then raise exception 'Personne inconnue'; end if;
-  if length(coalesce(trim(p_code), '')) < 4 then raise exception 'Le code du foyer doit contenir au moins 4 caractères'; end if;
-  if exists (select 1 from households) then raise exception 'Le foyer existe déjà : saisissez son code'; end if;
-  insert into households (name, code_hash) values ('Le QG', crypt(trim(p_code), gen_salt('bf'))) returning id into h;
-  insert into people (household_id, person) values (h, 'ilona'), (h, 'adrien') on conflict do nothing;
+  if exists (select 1 from members where user_id = auth.uid()) then
+    raise exception 'Ce compte fait déjà partie d''un foyer';
+  end if;
+  insert into households (name, created_by)
+  values (coalesce(nullif(trim(p_name), ''), 'Notre foyer'), auth.uid())
+  returning id into h;
   insert into members (household_id, user_id, person) values (h, auth.uid(), p_person);
   perform seed_household(h);
   return h;
 end $$;
-revoke all on function public.setup_household(text, text) from public, anon;
-grant execute on function public.setup_household(text, text) to authenticated;
+revoke all on function public.create_household(text, text) from public, anon;
+grant execute on function public.create_household(text, text) to authenticated;
 
--- Ouverture sur un nouvel appareil : « Je suis Ilona / Adrien » + code du foyer
-create or replace function public.enter_household(p_person text, p_code text) returns uuid
-language plpgsql security definer set search_path = public, extensions as $$
-declare h uuid; hash text;
+-- Arrivée de la deuxième personne avec le code d'invitation
+create or replace function public.join_household(p_code text) returns json
+language plpgsql security definer set search_path = public as $$
+declare h uuid; has_i boolean; has_a boolean; p text;
 begin
-  if auth.uid() is null then raise exception 'Session introuvable'; end if;
-  if p_person not in ('ilona','adrien') then raise exception 'Personne inconnue'; end if;
-  select id, code_hash into h, hash from households limit 1;
-  if h is null then raise exception 'Le foyer n''existe pas encore'; end if;
-  if hash is null or crypt(trim(coalesce(p_code, '')), hash) <> hash then
-    perform pg_sleep(1.5);   -- ralentit les essais au hasard
-    raise exception 'Code du foyer incorrect';
+  if auth.uid() is null then raise exception 'Connexion requise'; end if;
+  if exists (select 1 from members where user_id = auth.uid()) then
+    raise exception 'Ce compte fait déjà partie d''un foyer';
   end if;
-  insert into members (household_id, user_id, person) values (h, auth.uid(), p_person)
-  on conflict (household_id, user_id) do update set person = excluded.person, last_seen = now();
-  return h;
+  select id into h from households where invite_code = upper(trim(p_code));
+  if h is null then raise exception 'Code d''invitation introuvable'; end if;
+  select bool_or(person = 'ilona'), bool_or(person = 'adrien') into has_i, has_a
+    from members where household_id = h;
+  if coalesce(has_i, false) and coalesce(has_a, false) then raise exception 'Ce foyer est déjà complet'; end if;
+  p := case when coalesce(has_i, false) then 'adrien' else 'ilona' end;
+  insert into members (household_id, user_id, person) values (h, auth.uid(), p);
+  return json_build_object('household_id', h, 'person', p);
 end $$;
-revoke all on function public.enter_household(text, text) from public, anon;
-grant execute on function public.enter_household(text, text) to authenticated;
-
--- Changer le code du foyer (depuis un appareil déjà autorisé)
-create or replace function public.change_household_code(p_new text) returns void
-language plpgsql security definer set search_path = public, extensions as $$
-declare h uuid;
-begin
-  select household_id into h from members where user_id = auth.uid();
-  if h is null then raise exception 'Appareil non autorisé'; end if;
-  if length(coalesce(trim(p_new), '')) < 4 then raise exception 'Le code du foyer doit contenir au moins 4 caractères'; end if;
-  update households set code_hash = crypt(trim(p_new), gen_salt('bf')) where id = h;
-end $$;
-revoke all on function public.change_household_code(text) from public, anon;
-grant execute on function public.change_household_code(text) to authenticated;
-
--- Retirer cet appareil (« changer de personne » ou appareil prêté)
-create or replace function public.leave_device() returns void
-language sql security definer set search_path = public as $$
-  delete from members where user_id = auth.uid();
-$$;
-revoke all on function public.leave_device() from public, anon;
-grant execute on function public.leave_device() to authenticated;
+revoke all on function public.join_household(text) from public, anon;
+grant execute on function public.join_household(text) to authenticated;
 
 -- ---------------------------------------------------------------------
 -- Synchronisation en temps réel
@@ -401,7 +347,7 @@ grant execute on function public.leave_device() to authenticated;
 do $$
 declare t text;
 begin
-  foreach t in array array['households','members','people','projects','tasks','task_occurrences','inbox_items',
+  foreach t in array array['households','members','projects','tasks','task_occurrences','inbox_items',
                            'availabilities','recipes','meals','shopping_items','inventory_items'] loop
     begin
       execute format('alter publication supabase_realtime add table public.%I', t);

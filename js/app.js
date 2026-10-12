@@ -84,69 +84,86 @@ function updateNav() {
 }
 
 // =====================================================================
-//  Écrans hors application : configuration, « Qui es-tu ? »
+//  Écrans hors application : configuration, connexion, création du foyer
 // =====================================================================
 const brandBlock = `<div class="auth-brand"><img src="icons/icon-192.png" alt="" width="96" height="96"><h1>Le QG</h1><p>Le quotidien du foyer d’Ilona et Adrien</p></div>`;
-const whoPick = () => `<div class="who-pick" role="radiogroup" aria-label="Qui es-tu ?">
-  ${['ilona', 'adrien'].map((p) => `<label class="who p-${p}"><input type="radio" name="person" value="${p}" required ${ui.lastPerson === p ? 'checked' : ''}><span>${icon('user')}<b>Je suis ${P[p]}</b></span></label>`).join('')}</div>`;
 const SCREENS = {
   loading: () => `<div class="center-screen">${brandBlock}<p class="muted">Chargement…</p></div>`,
   config: () => `<div class="center-screen"><div class="auth-card">${brandBlock}
     <div class="notice warn">${icon('alert')}<div><strong>Configuration manquante</strong>
     <p>Le fichier <code>js/config.js</code> est introuvable ou incomplet. Créez-le à partir de <code>.env</code> avec <code>npm run config</code> (voir le README), puis rechargez la page.</p></div></div></div></div>`,
   error: () => `<div class="center-screen"><div class="auth-card">${brandBlock}<div class="notice warn">${icon('alert')}<div><strong>Impossible de démarrer</strong><p>${esc(ui.error)}</p><button class="btn" onclick="location.reload()">Réessayer</button></div></div></div></div>`,
-  welcome: () => {
-    const msg = ui.authMsg ? `<div class="notice warn">${icon('alert')}<div><p>${esc(ui.authMsg)}</p></div></div>` : '';
-    if (ui.firstRun) return `<div class="center-screen"><div class="auth-card">${brandBlock}${msg}
-      <form data-form="setup" class="stack">
-        <h2>Première ouverture</h2>
-        <p class="muted small">Le foyer n’existe pas encore. Dites qui vous êtes et choisissez ensemble un <strong>code du foyer</strong> : chacun le tapera une seule fois sur chaque téléphone ou ordinateur, puis l’app s’en souviendra.</p>
-        ${whoPick()}
-        <label class="field"><span class="label">Code du foyer (4 caractères minimum)</span><input type="password" name="code" minlength="4" required autocomplete="new-password"></label>
-        <label class="field"><span class="label">Confirmer le code</span><input type="password" name="code2" minlength="4" required autocomplete="new-password"></label>
-        <button class="btn primary big">Créer notre foyer</button>
-      </form></div></div>`;
-    return `<div class="center-screen"><div class="auth-card">${brandBlock}${msg}
-      <form data-form="enter" class="stack">
-        <h2>Qui es-tu ?</h2>
-        ${whoPick()}
-        <label class="field"><span class="label">Code du foyer</span><input type="password" name="code" required autocomplete="current-password"></label>
-        <p class="muted small">À faire une seule fois sur cet appareil : l’app s’en souviendra ensuite.</p>
-        <button class="btn primary big">Entrer</button>
-      </form></div></div>`;
+  auth: () => {
+    const m = ui.authMode;
+    const msg = ui.authMsg ? `<div class="notice ${ui.authMsg.kind === 'err' ? 'warn' : ''}">${icon(ui.authMsg.kind === 'err' ? 'alert' : 'check')}<div><p>${esc(ui.authMsg.text)}</p></div></div>` : '';
+    const invite = ui.inviteCode ? `<p class="hint">Invitation reçue : créez votre compte (ou connectez-vous), le code ${esc(ui.inviteCode)} sera prérempli.</p>` : '';
+    if (m === 'reset') return `<div class="center-screen"><div class="auth-card">${brandBlock}${msg}
+      <form data-form="reset" class="stack"><h2>Mot de passe oublié</h2>
+      <label class="field"><span class="label">Adresse e-mail</span><input type="email" name="email" required autocomplete="email"></label>
+      <button class="btn primary big">Recevoir un lien</button>
+      <button type="button" class="btn ghost" data-act="auth-mode" data-mode="login">Retour</button></form></div></div>`;
+    if (m === 'newpass') return `<div class="center-screen"><div class="auth-card">${brandBlock}${msg}
+      <form data-form="newpass" class="stack"><h2>Nouveau mot de passe</h2>
+      <label class="field"><span class="label">Nouveau mot de passe (8 caractères minimum)</span><input type="password" name="password" minlength="8" required autocomplete="new-password"></label>
+      <button class="btn primary big">Enregistrer</button></form></div></div>`;
+    const signup = m === 'signup';
+    return `<div class="center-screen"><div class="auth-card">${brandBlock}${msg}${invite}
+      <div class="tabs" role="tablist"><button role="tab" aria-selected="${!signup}" data-act="auth-mode" data-mode="login">Se connecter</button><button role="tab" aria-selected="${signup}" data-act="auth-mode" data-mode="signup">Créer un compte</button></div>
+      <form data-form="${signup ? 'signup' : 'login'}" class="stack">
+        <label class="field"><span class="label">Adresse e-mail</span><input type="email" name="email" required autocomplete="email"></label>
+        <label class="field"><span class="label">Mot de passe${signup ? ' (8 caractères minimum)' : ''}</span><input type="password" name="password" required ${signup ? 'minlength="8" autocomplete="new-password"' : 'autocomplete="current-password"'}></label>
+        <button class="btn primary big">${signup ? 'Créer mon compte' : 'Se connecter'}</button>
+      </form>
+      ${signup ? '<p class="muted small">Chaque personne du foyer crée son propre compte avec sa propre adresse e-mail.</p>' : '<button class="btn ghost small" data-act="auth-mode" data-mode="reset">Mot de passe oublié ?</button>'}
+    </div></div>`;
+  },
+  onboarding: () => {
+    const join = ui.onboard === 'join';
+    return `<div class="center-screen"><div class="auth-card">${brandBlock}
+      <p class="muted small">Connecté·e : ${esc(st.session?.user?.email || '')}</p>
+      <div class="tabs" role="tablist"><button role="tab" aria-selected="${!join}" data-act="onboard" data-mode="create">Créer notre foyer</button><button role="tab" aria-selected="${join}" data-act="onboard" data-mode="join">Rejoindre un foyer</button></div>
+      ${join ? `<form data-form="join-hh" class="stack">
+          <p>Saisissez le code d’invitation affiché chez l’autre membre (rubrique Foyer).</p>
+          <label class="field"><span class="label">Code d’invitation</span><input name="code" required maxlength="12" value="${esc(ui.inviteCode)}" autocapitalize="characters" autocomplete="off" class="code-input"></label>
+          <button class="btn primary big">Rejoindre</button></form>`
+        : `<form data-form="create-hh" class="stack">
+          <label class="field"><span class="label">Nom du foyer</span><input name="name" value="Le QG" maxlength="60" required></label>
+          <div class="field"><span class="label">Je suis</span><div class="seg"><label><input type="radio" name="person" value="ilona" required><span>Ilona</span></label><label><input type="radio" name="person" value="adrien" required><span>Adrien</span></label></div></div>
+          <p class="muted small">Le planning ménage, les deux tâches ponctuelles et la liste de courses de départ seront ajoutés une seule fois.</p>
+          <button class="btn primary big">Créer le foyer</button></form>`}
+      <button class="btn ghost small" data-act="logout">Se déconnecter</button>
+    </div></div>`;
   },
 };
 
 // =====================================================================
 //  Démarrage, session, chargement et synchronisation
 // =====================================================================
-async function showWelcome() {
-  ui.screen = 'welcome';
-  try { ui.firstRun = !(await D.rpc('household_exists', {})); } catch (e) { ui.firstRun = false; ui.authMsg = errMsg(e); }
-  render();
+function readInvite() {
+  try {
+    const u = new URL(location.href);
+    const code = u.searchParams.get('invitation');
+    if (code) { sessionStorage.setItem('qg-invite', code); u.searchParams.delete('invitation'); history.replaceState(null, '', u.pathname + u.search + u.hash); }
+    ui.inviteCode = (code || sessionStorage.getItem('qg-invite') || '').toUpperCase();
+  } catch { /* stockage indisponible : on ignore */ }
+  if (ui.inviteCode) { ui.onboard = 'join'; ui.authMode = 'signup'; }
 }
 
 async function boot() {
   hooks.render = render;
+  readInvite();
   ui.route = (location.hash.slice(2) || 'today').split('?')[0];
   if (!VIEWS[ui.route]) ui.route = 'today';
   render();
   if (!D.configured) { ui.screen = 'config'; render(); return; }
   try { sb = await D.client(); } catch (e) { ui.screen = 'error'; ui.error = 'Le service de données ne répond pas. ' + errMsg(e); render(); return; }
-  sb.auth.onAuthStateChange((event) => {
-    if (event === 'SIGNED_OUT' && ui.screen === 'app') { teardown(); showWelcome(); }
+  sb.auth.onAuthStateChange((event, session) => {
+    if (event === 'PASSWORD_RECOVERY') { ui.screen = 'auth'; ui.authMode = 'newpass'; render(); return; }
+    if (event === 'SIGNED_OUT') { teardown(); ui.screen = 'auth'; ui.authMode = 'login'; render(); return; }
+    if (event === 'SIGNED_IN' && !st.me) setTimeout(() => onSession(session), 0);
   });
   const { data } = await sb.auth.getSession();
   await onSession(data.session);
-}
-
-/** Session anonyme propre à l'appareil (créée au premier « Je suis … »). */
-async function ensureSession() {
-  const { data } = await sb.auth.getSession();
-  if (data.session) return data.session;
-  const r = await sb.auth.signInAnonymously();
-  if (r.error) throw r.error;
-  return r.data.session;
 }
 
 async function onSession(session) {
@@ -154,12 +171,13 @@ async function onSession(session) {
   booting = true;
   try {
     st.session = session;
-    if (!session) { await showWelcome(); return; }
+    if (!session) { ui.screen = 'auth'; render(); return; }
     const m = await D.myMembership(session.user.id);
-    if (!m) { await showWelcome(); return; }
+    if (!m) { ui.screen = 'onboarding'; render(); return; }
     st.me = m;
     await loadAll();
-    ui.screen = 'app'; ui.authMsg = null;
+    try { sessionStorage.removeItem('qg-invite'); } catch { /* rien */ }
+    ui.screen = 'app';
     $('#app').innerHTML = '';
     render();
     if (channel) channel.unsubscribe?.();
@@ -176,7 +194,7 @@ async function loadAll() {
   const rows = await Promise.all(names.map((n) => D.loadTable(n, hid(), t)));
   names.forEach((n, k) => { st[D.TABLES[n]] = rows[k]; });
   st.hh = st.hh[0] || null;
-  st.me = st.devices.find((x) => x.user_id === st.session.user.id) || st.me;
+  st.me = st.members.find((x) => x.user_id === st.session.user.id) || st.me;
 }
 
 const reloadTimers = {};
@@ -199,7 +217,7 @@ async function refreshAll() {
 function teardown() {
   if (channel) channel.unsubscribe?.();
   channel = null;
-  Object.assign(st, { session: null, me: null, hh: null, members: [], devices: [], tasks: [], occ: [], projects: [], inbox: [], avail: [], recipes: [], meals: [], shopping: [], inventory: [] });
+  Object.assign(st, { session: null, me: null, hh: null, members: [], tasks: [], occ: [], projects: [], inbox: [], avail: [], recipes: [], meals: [], shopping: [], inventory: [] });
 }
 
 // =====================================================================
@@ -284,11 +302,9 @@ function readTaskForm(fd, existing) {
 const A = {
   'close-sheet': () => closeSheet(),
   more: () => openSheet('Menu', F.moreSheet({ inbox: V.organizeCount(), stock: st.inventory.filter((x) => L.isLowStock(x)).length })),
-  logout: async () => {
-    if (!await confirmBox(`Changer de personne sur cet appareil ?`, { ok: 'Changer', danger: false, detail: `Cet appareil ne sera plus reconnu comme ${P[me()]}. Il faudra choisir « Je suis … » et retaper le code du foyer.` })) return;
-    try { await D.rpc('leave_device', {}); } catch (e) { console.warn(e); }
-    await sb.auth.signOut(); teardown(); await showWelcome();
-  },
+  'auth-mode': (d) => { ui.authMode = d.mode; ui.authMsg = null; render(); },
+  onboard: (d) => { ui.onboard = d.mode; render(); },
+  logout: async () => { await sb.auth.signOut(); teardown(); ui.screen = 'auth'; render(); },
 
   // --- navigation interne
   'maison-tab': (d) => { ui.maisonTab = d.tab; if (ui.route !== 'maison') location.hash = '#/maison'; else render(); },
@@ -519,32 +535,36 @@ async function addToShopping(lines) {
 //  Formulaires (envoi)
 // =====================================================================
 const FORMS = {
-  // --- « Qui es-tu ? »
-  setup: async (fd) => {
-    ui.lastPerson = fd.get('person');
-    if (fd.get('code') !== fd.get('code2')) { ui.authMsg = 'Les deux codes ne sont pas identiques.'; render(); return; }
-    try {
-      const session = await ensureSession();
-      await D.rpc('setup_household', { p_person: fd.get('person'), p_code: fd.get('code') });
-      toast('Foyer créé'); await onSession(session);
-    } catch (e) { ui.authMsg = errMsg(e); render(); }
+  // --- comptes
+  login: async (fd) => {
+    const { error } = await sb.auth.signInWithPassword({ email: fd.get('email').trim(), password: fd.get('password') });
+    if (error) { ui.authMsg = { kind: 'err', text: errMsg(error) }; render(); }
   },
-  enter: async (fd) => {
-    ui.lastPerson = fd.get('person');
-    try {
-      const session = await ensureSession();
-      await D.rpc('enter_household', { p_person: fd.get('person'), p_code: fd.get('code') });
-      toast(`Bienvenue ${P[fd.get('person')]} !`); await onSession(session);
-    } catch (e) {
-      ui.authMsg = errMsg(e);
-      if (/existe pas encore/.test(ui.authMsg)) ui.firstRun = true;
-      render();
-    }
+  signup: async (fd) => {
+    const email = fd.get('email').trim();
+    const redirect = location.origin + location.pathname + (ui.inviteCode ? `?invitation=${encodeURIComponent(ui.inviteCode)}` : '');
+    const { data, error } = await sb.auth.signUp({ email, password: fd.get('password'), options: { emailRedirectTo: redirect } });
+    if (error) { ui.authMsg = { kind: 'err', text: errMsg(error) }; render(); return; }
+    if (!data.session) { ui.authMsg = { kind: 'ok', text: `Compte créé. Un e-mail de confirmation a été envoyé à ${email} : ouvrez le lien, puis connectez-vous.` }; ui.authMode = 'login'; render(); }
   },
-  'hh-code': async (fd, form) => {
-    if (fd.get('code') !== fd.get('code2')) return toast('Les deux codes ne sont pas identiques.', 'err');
-    const ok = await save(() => D.rpc('change_household_code', { p_new: fd.get('code') }), 'Code du foyer modifié. Les appareils déjà reconnus restent connectés.');
-    if (ok) form.reset();
+  reset: async (fd) => {
+    const { error } = await sb.auth.resetPasswordForEmail(fd.get('email').trim(), { redirectTo: location.origin + location.pathname });
+    ui.authMsg = error ? { kind: 'err', text: errMsg(error) } : { kind: 'ok', text: 'Si un compte existe pour cette adresse, un lien de réinitialisation vient d’être envoyé.' };
+    render();
+  },
+  newpass: async (fd) => {
+    const { error } = await sb.auth.updateUser({ password: fd.get('password') });
+    if (error) { ui.authMsg = { kind: 'err', text: errMsg(error) }; render(); return; }
+    toast('Mot de passe modifié'); ui.authMsg = null;
+    const { data } = await sb.auth.getSession(); await onSession(data.session);
+  },
+  'create-hh': async (fd) => {
+    try { await D.rpc('create_household', { p_name: fd.get('name'), p_person: fd.get('person') }); toast('Foyer créé'); await onSession(st.session); }
+    catch (e) { toast(errMsg(e), 'err'); }
+  },
+  'join-hh': async (fd) => {
+    try { const r = await D.rpc('join_household', { p_code: fd.get('code') }); toast(`Bienvenue ${P[r.person]} !`); await onSession(st.session); }
+    catch (e) { toast(errMsg(e), 'err'); }
   },
 
   // --- capture
@@ -783,7 +803,7 @@ const FORMS = {
     }
   },
   'member-prefs': async (fd, form) => save(async () => {
-    const row = await D.updatePerson(hid(), form.dataset.person, { daily_capacity_min: Math.max(0, int(fd.get('cap')) ?? 60), preferred_categories: fd.getAll('pref'), avoided_categories: fd.getAll('avoid') });
+    const row = await D.updateMember(hid(), form.dataset.person, { daily_capacity_min: Math.max(0, int(fd.get('cap')) ?? 60), preferred_categories: fd.getAll('pref'), avoided_categories: fd.getAll('avoid') });
     const k = st.members.findIndex((m) => m.person === row.person); st.members[k] = row;
   }, 'Préférences enregistrées'),
 

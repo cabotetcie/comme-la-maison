@@ -331,7 +331,7 @@ export function viewDispos() {
 }
 function memberPrefs(p) {
   const m = st.members.find((x) => x.person === p);
-  if (!m) return `<div class="sub-card"><strong>${P[p]}</strong><p class="muted small">Réglages indisponibles.</p></div>`;
+  if (!m) return `<div class="sub-card"><strong>${P[p]}</strong><p class="muted small">${P[p]} n’a pas encore rejoint le foyer. La répartition lui réserve 60 min par jour par défaut.</p></div>`;
   return `<form class="sub-card stack" data-form="member-prefs" data-person="${p}">
     <strong>${P[p]}</strong>
     <label class="field"><span class="label">Temps habituel pour les tâches, par jour (min)</span>
@@ -453,30 +453,32 @@ export function viewStock() {
 
 // ------------------------------------------------------------ Foyer
 export function viewFoyer() {
+  const full = L.PEOPLE.every((p) => st.members.some((m) => m.person === p));
   const locs = st.hh?.settings?.locations || {};
-  const devices = (p) => st.devices.filter((d) => d.person === p).length;
+  const link = `${location.origin}${location.pathname}?invitation=${st.hh?.invite_code || ''}`;
   return `<div class="page-head"><h1>${icon('users')}Foyer</h1></div>
   <section class="card">
     <form data-form="hh-name" class="inline-form"><label class="field grow"><span class="label">Nom du foyer</span><input name="name" value="${esc(st.hh?.name || '')}" maxlength="60" required></label><button class="btn">Enregistrer</button></form>
-    <div class="members">${L.PEOPLE.map((p) => `<div class="member p-${p}">${icon('user')}<div><strong>${P[p]}${p === me() ? ' (cet appareil)' : ''}</strong>
-      <span class="muted small">${devices(p) ? `Reconnue sur ${devices(p)} appareil${devices(p) > 1 ? 's' : ''}`.replace('Reconnue', p === 'adrien' ? 'Reconnu' : 'Reconnue') : `Pas encore ${p === 'adrien' ? 'connecté' : 'connectée'}`}</span></div></div>`).join('')}</div>
-    <p class="muted small">Pour ajouter un appareil : ouvrez l’app dessus, choisissez « Je suis … » et tapez le code du foyer. C’est à faire une seule fois par appareil.</p>
+    <div class="members">${L.PEOPLE.map((p) => {
+      const m = st.members.find((x) => x.person === p);
+      return `<div class="member p-${p}">${icon('user')}<div><strong>${P[p]}${p === me() ? ' (vous)' : ''}</strong><span class="muted small">${m ? 'Membre du foyer' : 'Invitation en attente'}</span></div></div>`;
+    }).join('')}</div>
   </section>
-  <section class="card">${sectionHead('Code du foyer', '', 'scale')}
-    <p class="muted small">Ce code protège l’accès : sans lui, personne ne peut entrer, même avec l’adresse du site. Le changer n’affecte pas les appareils déjà reconnus.</p>
-    <form data-form="hh-code" class="stack">
-      <div class="grid2"><label class="field"><span class="label">Nouveau code</span><input type="password" name="code" minlength="4" required autocomplete="new-password"></label>
-      <label class="field"><span class="label">Confirmer</span><input type="password" name="code2" minlength="4" required autocomplete="new-password"></label></div>
-      <div><button class="btn">Changer le code</button></div></form>
-  </section>
+  ${full ? '' : `<section class="card invite">
+    ${sectionHead(`Inviter ${P[other()]}`, '', 'users')}
+    <ol class="steps"><li>${P[other()]} ouvre l’application et crée son compte avec sa propre adresse e-mail.</li>
+      <li>Puis choisit « Rejoindre un foyer » et saisit ce code :</li></ol>
+    <div class="code" aria-label="Code d’invitation">${esc(st.hh?.invite_code || '')}</div>
+    <div class="row-actions"><button class="btn primary" data-act="copy-invite" data-text="${esc(link)}">${icon('copy')}Copier le lien d’invitation</button></div>
+  </section>`}
   <section class="card">${sectionHead('Emplacements de l’inventaire', '', 'box')}
     <div class="chips-list">${Object.values(L.DEFAULT_LOCATIONS).map((v) => `<span class="chip">${esc(v)}</span>`).join('')}
       ${Object.entries(locs).map(([k, v]) => `<span class="chip">${esc(v)}<button class="chip-x" data-act="loc-delete" data-loc="${esc(k)}" aria-label="Supprimer ${esc(v)}">${icon('x')}</button></span>`).join('')}</div>
     <form data-form="loc-add" class="inline-form"><label class="field grow"><span class="label">Nouvel emplacement</span><input name="name" maxlength="40" placeholder="Ex. Cave, Cellier" required></label><button class="btn">${icon('plus')}Ajouter</button></form>
   </section>
-  <section class="card">${sectionHead('Cet appareil', '', 'user')}
-    <p class="small">Reconnu comme <strong>${P[me()]}</strong>.</p>
+  <section class="card">${sectionHead('Compte', '', 'user')}
+    <p class="small">Connecté·e en tant que <strong>${esc(st.session?.user?.email || '')}</strong> (${P[me()]}).</p>
     <p class="muted small">Données initiales importées ${st.hh?.settings?.seeded_on ? 'le ' + esc(L.fmtLongDate(st.hh.settings.seeded_on)) : ''} · synchronisation ${ui.online ? 'active' : 'en reconnexion…'}</p>
-    <button class="btn" data-act="logout">${icon('swap')}Changer de personne sur cet appareil</button>
+    <button class="btn" data-act="logout">${icon('logout')}Se déconnecter</button>
   </section>`;
 }
