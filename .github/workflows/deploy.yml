@@ -33,6 +33,10 @@ jobs:
           mkdir _site
           cp -r index.html manifest.webmanifest css js icons _site/
           rm -f _site/icons/source.png
+          # Numéro de version sur chaque fichier : les téléphones chargent toujours la dernière version
+          V=${GITHUB_SHA::8}
+          sed -i -E "s#(href|src)=\"(css/styles\.css|js/config\.js|js/app\.js|manifest\.webmanifest)\"#\1=\"\2?v=$V\"#g" _site/index.html
+          sed -i -E "s#from '\./([a-z]+)\.js'#from './\1.js?v=$V'#g" _site/js/*.js
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
