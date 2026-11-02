@@ -1,0 +1,5 @@
+// Fichier généré par « npm run config » — ne pas versionner.
+window.QG_CONFIG = {
+  "SUPABASE_URL": "https://aspijwstdkqungduswhx.supabase.co",
+  "SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFzcGlqd3N0ZGtxdW5nZHVzd2h4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE0NzU1NzAsImV4cCI6MjEwNzA1MTU3MH0.ZACzid4QcpoZAx9ycfiERb-gmDvAZkN01DocMg2zC2A"
+};
