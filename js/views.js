@@ -59,6 +59,8 @@ export function viewToday() {
   const alerts = [];
   if (toOrganize) alerts.push(`<a class="pill" href="#/inbox">${icon('inbox')}${toOrganize} à organiser</a>`);
   if (replan.length) alerts.push(`<a class="pill warn" href="#/maison" data-act="maison-tab" data-tab="replan">${icon('alert')}${replan.length} à replanifier</a>`);
+  const toCount = L.dailyCountPick(st.inventory, t).length;
+  if (toCount) alerts.push(`<button class="pill" data-act="count-open">${icon('list')}${toCount} produit${toCount > 1 ? 's' : ''} à compter</button>`);
   if (stockAlerts) alerts.push(`<a class="pill warn" href="#/stock">${icon('box')}${stockAlerts} alerte${stockAlerts > 1 ? 's' : ''} inventaire</a>`);
   for (const p of absentToday) alerts.push(`<a class="pill" href="#/dispos">${icon('moon')}${P[p]} ${L.ABSENT_LABEL[p]} aujourd’hui</a>`);
 
@@ -495,17 +497,23 @@ export function viewStock() {
         ${ex && ex.level !== 'ok' ? `<span class="chip ${ex.level === 'expired' ? 'late' : 'soon'}">${icon('alert')}${esc(ex.label)}</span>` : ex ? `<span class="chip">${esc(ex.label)}</span>` : ''}
         ${low ? `<span class="chip soon">${icon('alert')}Stock bas</span>` : ''}</span></button>
       <button class="icon-btn" data-act="inv-dec" data-id="${x.id}" aria-label="Diminuer le stock de ${esc(x.name)}" ${x.qty == null || Number(x.qty) <= 0 ? 'disabled' : ''}>${icon('minus')}</button>
-      <button class="icon-btn" data-act="inv-to-shop" data-id="${x.id}" aria-label="Ajouter ${esc(x.name)} aux courses">${icon('cart')}</button></div>`;
+      <button class="icon-btn" data-act="inv-to-shop" data-id="${x.id}" aria-label="${esc(x.name)} : plus de stock, retirer de l’inventaire et ajouter aux courses" title="Plus de stock → courses">${icon('cart')}</button></div>`;
   };
   return `<div class="page-head"><h1>${icon('box')}Inventaire</h1>
     <button class="btn primary" data-act="inv-new">${icon('plus')}Produit</button></div>
-  <p class="muted lead">À remplir petit à petit : les menus et les courses fonctionnent même si l’inventaire est incomplet.</p>
+  <p class="muted lead">Un produit à 0 sort de l’inventaire et part sur la liste de courses (bouton ${icon('cart')} ou « − » jusqu’à 0). Il revient avec « Ranger les achats ».</p>
+  ${(() => { const n = L.dailyCountPick(st.inventory, t).length; const done = st.inventory.filter((x) => L.dayOf(x.counted_at) === t).length;
+    return all.length ? `<div class="notice count-notice">${icon('list')}<div><strong>Comptage du jour</strong><p>${n ? `${n} produit${n > 1 ? 's' : ''} à vérifier aujourd’hui` : 'Terminé pour aujourd’hui'}${done ? ` · ${done} déjà compté${done > 1 ? 's' : ''}` : ''}. Tout l’inventaire est revu en une semaine environ.</p>
+      ${n ? `<button class="btn small primary" data-act="count-open">Compter maintenant</button>` : ''}</div></div>` : ''; })()}
   ${alerts.length ? `<section class="card alert-card">${sectionHead(`À surveiller (${alerts.length})`, '', 'alert')}${alerts.map(row).join('')}</section>` : ''}
   <div class="tabs" role="tablist">
     <button role="tab" aria-selected="${ui.stockLoc === 'tous'}" data-act="stock-loc" data-loc="tous">Tout (${all.length})</button>
     ${Object.entries(locs).map(([k, v]) => `<button role="tab" aria-selected="${ui.stockLoc === k}" data-act="stock-loc" data-loc="${esc(k)}">${esc(v)} (${all.filter((x) => x.location === k).length})</button>`).join('')}
   </div>
-  <section class="card">${shown.length ? shown.map(row).join('') : empty('Aucun produit ici pour l’instant.', 'box', `<button class="btn" data-act="inv-new">${icon('plus')}Ajouter un produit</button>`)}</section>`;
+  <section class="card">${shown.length ? shown.map(row).join('') : empty('Aucun produit ici pour l’instant.', 'box', `<button class="btn" data-act="inv-new">${icon('plus')}Ajouter un produit</button>`)}</section>
+  ${all.length ? `<section class="card">${sectionHead('Refaire l’inventaire au propre', '', 'box')}
+    <p class="muted small">Efface tous les produits de l’inventaire (${all.length}) pour repartir d’une page blanche. Les recettes, menus et courses ne sont pas touchés.</p>
+    <button class="btn ghost danger-text" data-act="inv-reset">${icon('trash')}Vider l’inventaire</button></section>` : ''}`;
 }
 
 // ------------------------------------------------------------ Foyer

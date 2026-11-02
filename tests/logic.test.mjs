@@ -262,3 +262,19 @@ test('recettes réalisables : complètes en premier, anti-gaspi mis en avant', (
   assert.deepEqual(s[0].rescue.map((x) => x.id), ['coco2']);
   assert.deepEqual(s[2].missing.map((l) => l.name), ['oeufs', 'beurre']);
 });
+
+test('comptage tournant : jamais comptés d’abord, même tirage le même jour, liste qui se vide', () => {
+  const inv = Array.from({ length: 30 }, (_, i) => ({ id: 'p' + i, name: 'P' + i, counted_at: i < 25 ? `2026-10-${String(10 + (i % 15)).padStart(2, '0')}T10:00:00Z` : null }));
+  assert.equal(L.dailyCountSize(30), 5);
+  assert.equal(L.dailyCountSize(2), 2);
+  assert.equal(L.dailyCountSize(100), 8);
+  const a = L.dailyCountPick(inv, '2026-11-02');
+  assert.equal(a.length, 5);
+  assert.deepEqual(a.map((x) => x.id).sort(), ['p25', 'p26', 'p27', 'p28', 'p29'], 'jamais comptés en premier');
+  assert.deepEqual(L.dailyCountPick(inv, '2026-11-02').map((x) => x.id), a.map((x) => x.id), 'même ordre au même jour');
+  const counted = inv.map((x) => (x.id === a[0].id || x.id === a[1].id ? { ...x, counted_at: '2026-11-02T09:00:00Z' } : x));
+  assert.equal(L.dailyCountPick(counted, '2026-11-02').length, 3, 'deux comptés aujourd’hui : il en reste trois');
+  const all = inv.map((x) => ({ ...x, counted_at: '2026-11-02T09:00:00Z' }));
+  assert.equal(L.dailyCountPick(all, '2026-11-02').length, 0);
+  assert.equal(L.dayOf('2026-11-02T23:30:00Z'), '2026-11-03', 'jour calculé à Paris');
+});

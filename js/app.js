@@ -164,6 +164,7 @@ async function onSession(session) {
     render();
     if (channel) channel.unsubscribe?.();
     channel = D.subscribe(m.household_id, onRemoteChange);
+    maybeDailyCount();
   } catch (e) {
     console.error(e);
     ui.screen = 'error'; ui.error = errMsg(e); render();
@@ -466,6 +467,11 @@ const A = {
       for (const u of used) {
         const x = st.inventory.find((y) => y.id === u.id);
         if (x && x.qty != null) putRow('inventory', await D.update('inventory_items', x.id, { qty: Math.round((Number(x.qty) + Number(u.amount)) * 100) / 100 }));
+        else if (!x && u.item) {   // produit sorti de l'inventaire à 0 : on le remet
+          putRow('inventory', await D.insert('inventory_items', { ...u.item, qty: u.amount, household_id: hid() }));
+          const open = st.shopping.find((y) => !y.checked && !y.archived && L.nameKey(y.name) === L.nameKey(u.name) && y.qty == null);
+          if (open) { await D.remove('shopping_items', open.id); dropRow('shopping', open.id); }
+        }
       }
       putRow('meals', await D.update('meals', m.id, { cooked: null }));
     }, 'Annulé : ingrédients remis dans l’inventaire');
@@ -507,18 +513,28 @@ const A = {
     const x = st.inventory.find((y) => y.id === d.id);
     const step = { g: 100, ml: 100, kg: 0.25, l: 0.25 }[L.normUnit(x.unit)] || 1;
     const qty = Math.max(0, Math.round((Number(x.qty) - step) * 100) / 100);
-    const ok = await save(async () => putRow('inventory', await D.update('inventory_items', x.id, { qty })), `${x.name} : ${L.fmtQty(qty, x.unit) || 0}`);
+    if (qty === 0) return save(() => depleteItem(x), `${x.name} épuisé : retiré de l’inventaire et ajouté aux courses`);
+    const ok = await save(async () => putRow('inventory', await D.update('inventory_items', x.id, { qty })), `${x.name} : ${L.fmtQty(qty, x.unit)}`);
     const after = st.inventory.find((y) => y.id === x.id);
-    const onList = st.shopping.some((s) => !s.checked && L.nameKey(s.name) === L.nameKey(x.name));
-    if (ok && !onList && (qty === 0 || L.isLowStock(after)) && await confirmBox(`${x.name} : stock ${qty === 0 ? 'épuisé' : 'bas'}. L’ajouter aux courses ?`, { ok: 'Ajouter aux courses', danger: false })) {
-      save(() => addToShopping([{ name: x.name, category: L.SHOP_CATEGORIES[x.category] ? x.category : L.guessShopCategory(x.name) }]), 'Ajouté aux courses');
+    if (ok && !onShoppingList(x.name) && L.isLowStock(after) && await confirmBox(`${x.name} : stock bas. L’ajouter aux courses ?`, { ok: 'Ajouter aux courses', danger: false, detail: 'Le produit reste dans l’inventaire tant qu’il en reste.' })) {
+      save(() => addToShopping([{ name: x.name, category: shopCat(x) }]), 'Ajouté aux courses');
     }
   },
-  'inv-to-shop': (d) => {
+  'inv-to-shop': async (d) => {
     const x = st.inventory.find((y) => y.id === d.id);
-    if (st.shopping.some((s) => !s.checked && L.nameKey(s.name) === L.nameKey(x.name))) return toast(`${x.name} est déjà sur la liste de courses.`);
-    save(() => addToShopping([{ name: x.name, category: L.SHOP_CATEGORIES[x.category] ? x.category : L.guessShopCategory(x.name) }]), 'Ajouté aux courses');
+    if (!await confirmBox(`« ${x.name} » : plus de stock ?`, { ok: 'Oui, plus de stock', danger: false, detail: 'Le produit sort de l’inventaire et passe sur la liste de courses. Il reviendra dans l’inventaire avec « Ranger les achats ».' })) return;
+    save(() => depleteItem(x), `${x.name} retiré de l’inventaire et ajouté aux courses`);
   },
+  'inv-reset': async () => {
+    const n = st.inventory.length;
+    if (!await confirmBox(`Vider tout l’inventaire (${n} produit${n > 1 ? 's' : ''}) ?`, { ok: 'Tout effacer', detail: 'Cette action est définitive. Les recettes, menus et la liste de courses ne sont pas touchés.' })) return;
+    save(async () => { await D.removeAll('inventory_items', hid()); st.inventory = []; }, 'Inventaire vidé : vous pouvez le refaire au propre');
+  },
+
+  // --- comptage tournant
+  'count-open': () => openCount(),
+  'count-later': () => { closeSheet(); toast('D’accord, le comptage reste disponible dans Inventaire.'); },
+  'count-zero': (d, el) => { const i = el.closest('form').querySelector(`[name=cq${d.k}]`); i.value = '0'; i.focus(); },
 
   // --- disponibilités
   'avail-delete': (d) => save(async () => { await D.remove('availabilities', d.id); dropRow('avail', d.id); }, 'Supprimé'),
@@ -546,6 +562,28 @@ function openCook(recipe, servings, meal) {
   const { ops, shop } = F.buildCook(plan);
   ui.cook = { recipeId: recipe.id, mealId: meal?.id || null, servings, plan, ops, shop };
   openSheet(`Cuisiner « ${recipe.name} »`, F.cookForm({ recipe, servings, meal, plan, ops, shop }), { wide: true });
+}
+
+function onShoppingList(name) { return st.shopping.some((y) => !y.checked && !y.archived && L.nameKey(y.name) === L.nameKey(name)); }
+function shopCat(x) { return L.SHOP_CATEGORIES[x.category] ? x.category : L.guessShopCategory(x.name); }
+/** Stock à 0 : le produit sort de l'inventaire et passe sur la liste de courses (s'il n'y est pas déjà). */
+async function depleteItem(x) {
+  if (x.id && st.inventory.some((y) => y.id === x.id)) { await D.remove('inventory_items', x.id); dropRow('inventory', x.id); }
+  if (!onShoppingList(x.name)) await addToShopping([{ name: x.name, category: shopCat(x) }]);
+}
+/** Feuille « Comptage du jour ». */
+function openCount() {
+  const items = L.dailyCountPick(st.inventory, today());
+  openSheet('Comptage du jour', F.countForm(items, locations()), { wide: true });
+}
+/** À l'ouverture de l'app, propose le comptage une fois par jour et par appareil. */
+function maybeDailyCount() {
+  const t = today();
+  if (!L.dailyCountPick(st.inventory, t).length || $('#sheet').open) return;
+  let seen = null;
+  try { seen = localStorage.getItem('qg-count-day'); localStorage.setItem('qg-count-day', t); } catch { /* stockage indisponible */ }
+  if (seen === t) return;
+  setTimeout(() => { if (ui.screen === 'app' && !$('#sheet').open) openCount(); }, 700);
 }
 
 async function addToShopping(lines) {
@@ -790,7 +828,28 @@ const FORMS = {
   inv: async (fd) => {
     const id = fd.get('id');
     const row = { name: String(fd.get('name')).trim(), qty: num(fd.get('qty')), unit: str(fd.get('unit')), location: fd.get('location'), category: fd.get('category'), expires_on: fd.get('expires') || null, low_threshold: num(fd.get('low')) };
+    if (row.qty === 0) {
+      const x = id ? st.inventory.find((y) => y.id === id) : { ...row };
+      return save(async () => { await depleteItem({ ...x, ...row }); closeSheet(); }, `${row.name} à 0 : ${id ? 'retiré de l’inventaire et ' : ''}ajouté aux courses`);
+    }
     return save(async () => { putRow('inventory', id ? await D.update('inventory_items', id, row) : await D.insert('inventory_items', { ...row, household_id: hid() })); closeSheet(); }, 'Inventaire mis à jour');
+  },
+
+  count: async (fd) => {
+    const now = new Date().toISOString(); let changed = 0; let out = 0; let n = 0;
+    return save(async () => {
+      for (let k = 0; fd.has('cid' + k); k++) {
+        const x = st.inventory.find((y) => y.id === fd.get('cid' + k)); if (!x) continue;
+        const raw = String(fd.get('cq' + k) ?? '').trim(); const q = num(raw);
+        n += 1;
+        if (raw !== '' && q === 0) { await depleteItem(x); out += 1; continue; }
+        const patch = { counted_at: now };
+        if (raw !== '' && q != null && q !== (x.qty == null ? null : Number(x.qty))) { patch.qty = q; changed += 1; }
+        putRow('inventory', await D.update('inventory_items', x.id, patch));
+      }
+      closeSheet();
+      toast(`${n} produit${n > 1 ? 's' : ''} compté${n > 1 ? 's' : ''}${changed ? ` · ${changed} corrigé${changed > 1 ? 's' : ''}` : ''}${out ? ` · ${out} épuisé${out > 1 ? 's' : ''}, passé${out > 1 ? 's' : ''} aux courses` : ''}`);
+    }, '');
   },
 
   // --- disponibilités
@@ -847,17 +906,21 @@ const FORMS = {
     }
     const shopLines = fd.getAll('shop').map(Number).map((i) => c.shop[i]).filter(Boolean)
       .map((x) => ({ name: x.name, qty: x.qty ?? null, unit: x.unit || null, category: categoryFor(x.name) }));
+    let depleted = 0;
     return save(async () => {
       for (const u of used) {
         const x = st.inventory.find((y) => y.id === u.id); if (!x || x.qty == null) continue;
         const after = Math.max(0, Math.round((Number(x.qty) - u.amount) * 100) / 100);
         u.amount = Math.round((Number(x.qty) - after) * 100) / 100;   // ce qui a réellement été retiré (pour l'annulation)
-        putRow('inventory', await D.update('inventory_items', x.id, { qty: after }));
+        if (after <= 0) {
+          u.item = { name: x.name, unit: x.unit, location: x.location, category: x.category, expires_on: x.expires_on, low_threshold: x.low_threshold };
+          await depleteItem(x); depleted += 1;
+        } else putRow('inventory', await D.update('inventory_items', x.id, { qty: after }));
       }
       if (meal) putRow('meals', await D.update('meals', meal.id, { cooked: { at: new Date().toISOString(), by: me(), servings: num(fd.get('servings')) || c.servings, used } }));
       const n = shopLines.length ? await addToShopping(shopLines) : 0;
       ui.cook = null; closeSheet();
-      toast(`${recipe.name} : ${used.length} produit${used.length > 1 ? 's' : ''} mis à jour dans l’inventaire${n ? ` · ${n} ajouté${n > 1 ? 's' : ''} aux courses` : ''}`);
+      toast(`${recipe.name} : ${used.length} produit${used.length > 1 ? 's' : ''} mis à jour dans l’inventaire${depleted ? ` · ${depleted} épuisé${depleted > 1 ? 's' : ''}, passé${depleted > 1 ? 's' : ''} aux courses` : ''}${n ? ` · ${n} ajouté${n > 1 ? 's' : ''} aux courses` : ''}`);
     }, '');
   },
   'staple-add': async (fd, form) => {

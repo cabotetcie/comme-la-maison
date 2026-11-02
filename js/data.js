@@ -56,6 +56,9 @@ export async function updateHousehold(id, patch) {
 export async function remove(table, id) {
   check(await sb.from(table).delete().eq('id', id));
 }
+export async function removeAll(table, hid) {
+  check(await sb.from(table).delete().eq('household_id', hid));
+}
 export async function upsertOcc(row) {
   return check(await sb.from('task_occurrences').upsert(row, { onConflict: 'task_id,occ_date' }).select().single());
 }

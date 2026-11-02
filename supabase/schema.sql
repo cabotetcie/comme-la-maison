@@ -207,9 +207,12 @@ create table if not exists public.inventory_items (
   location      text not null default 'placards',
   expires_on    date,
   low_threshold numeric,
+  counted_at    timestamptz,      -- dernier comptage (comptage tournant)
   updated_at    timestamptz not null default now(),
   created_at    timestamptz not null default now()
 );
+
+alter table public.inventory_items add column if not exists counted_at timestamptz;
 
 create index if not exists tasks_household_idx on public.tasks(household_id);
 create index if not exists occ_household_idx on public.task_occurrences(household_id, occ_date);

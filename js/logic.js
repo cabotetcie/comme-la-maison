@@ -642,3 +642,23 @@ export function recipeSuggestions(recipes, inventory, today, staples = DEFAULT_S
   }
   return out.sort((a, b) => a.score - b.score || b.have / (b.total || 1) - a.have / (a.total || 1) || a.recipe.name.localeCompare(b.recipe.name, 'fr'));
 }
+
+// ---------------------------------------------------- comptage tournant de l'inventaire
+/** Jour (Europe/Paris) d'un horodatage, ou null. */
+export function dayOf(ts) { return ts ? todayISO(new Date(ts)) : null; }
+/** Nombre de produits à compter par jour : tout l'inventaire est revu en une semaine environ (3 à 8 par jour). */
+export function dailyCountSize(total) { return total ? Math.min(total, Math.max(3, Math.min(8, Math.ceil(total / 7)))) : 0; }
+function hashStr(s) { let h = 2166136261; for (const c of s) { h ^= c.codePointAt(0); h = Math.imul(h, 16777619); } return h >>> 0; }
+/**
+ * Produits à compter aujourd'hui : d'abord ceux jamais comptés, puis les plus anciens comptages ;
+ * à égalité, un tirage au hasard propre au jour (identique sur les deux téléphones).
+ * Ceux déjà comptés aujourd'hui sont exclus : la liste se vide au fil des comptages.
+ */
+export function dailyCountPick(inventory, today) {
+  const n = dailyCountSize(inventory.length);
+  const done = inventory.filter((x) => dayOf(x.counted_at) === today).length;
+  return inventory
+    .filter((x) => dayOf(x.counted_at) !== today)
+    .sort((a, b) => (a.counted_at || '').localeCompare(b.counted_at || '') || hashStr(today + a.id) - hashStr(today + b.id))
+    .slice(0, Math.max(0, n - done));
+}

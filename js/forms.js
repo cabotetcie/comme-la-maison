@@ -362,8 +362,8 @@ export function buildCook(plan) {
   const ops = []; const shop = [];
   plan.forEach((l, k) => {
     for (const u of l.uses) {
-      ops.push({ line: k, id: u.id, name: u.name, unit: u.unit, amount: u.amount, before: u.before, untracked: u.before == null });
-      if (u.low) shop.push({ line: k, name: u.name, qty: null, unit: null, checked: true, why: u.after <= 0 ? 'épuisé' : 'stock bas' });
+      ops.push({ line: k, id: u.id, name: u.name, unit: u.unit, amount: u.amount, before: u.before, after: u.after, untracked: u.before == null });
+      if (u.low && u.after > 0) shop.push({ line: k, name: u.name, qty: null, unit: null, checked: true, why: 'stock bas' });
     }
     if (l.status === 'missing') shop.push({ line: k, name: l.name, qty: l.qty, unit: l.unit, checked: false, why: 'pas dans l’inventaire' });
     if (l.status === 'short') shop.push({ line: k, name: l.name, qty: l.missing.qty, unit: l.missing.unit || null, checked: true, why: 'pas assez en stock' });
@@ -385,7 +385,8 @@ export function cookForm({ recipe, servings, meal, plan, ops, shop }) {
         ? `<p class="small muted">${esc(o.name)} : quantité non suivie dans l’inventaire, rien à déduire.</p>`
         : `<label class="cook-op"><input type="checkbox" name="use" value="${o.i}" ${o.amount ? 'checked' : ''}>
             <span class="grow">Déduire de <strong>${esc(o.name)}</strong> <span class="muted small">(en stock : ${esc(L.fmtQty(o.before, o.unit) || '0')})</span></span>
-            <span class="amt"><input name="amt${o.i}" value="${esc(o.amount == null ? '' : String(o.amount).replace('.', ','))}" inputmode="decimal" aria-label="Quantité à déduire de ${esc(o.name)}" placeholder="Qté"><span class="unit">${esc(o.unit || 'pièce(s)')}</span></span></label>`).join('')}
+            <span class="amt"><input name="amt${o.i}" value="${esc(o.amount == null ? '' : String(o.amount).replace('.', ','))}" inputmode="decimal" aria-label="Quantité à déduire de ${esc(o.name)}" placeholder="Qté"><span class="unit">${esc(o.unit || 'pièce(s)')}</span></span></label>
+            ${o.after != null && o.after <= 0 ? `<p class="hint small">${icon('cart')} Stock épuisé : « ${esc(o.name)} » sortira de l’inventaire et ira sur la liste de courses.</p>` : ''}`).join('')}
       ${myShop.map((x) => `<label class="check-line small"><input type="checkbox" name="shop" value="${x.i}" ${x.checked ? 'checked' : ''}><span>${icon('cart')} Ajouter « ${esc(x.name)} »${x.qty != null ? ` (${esc(L.fmtQty(x.qty, x.unit))})` : ''} aux courses — ${esc(x.why)}</span></label>`).join('')}
     </div>`;
   }).join('');
@@ -395,5 +396,22 @@ export function cookForm({ recipe, servings, meal, plan, ops, shop }) {
       <input type="number" name="servings" min="1" max="50" value="${servings}" data-change="cook-servings" inputmode="numeric"></label>
     ${lines || '<p class="muted">Cette recette n’a pas d’ingrédients.</p>'}
     <div class="sheet-actions"><button type="button" class="btn ghost" data-act="close-sheet">Annuler</button><button class="btn primary">${icon('check')}Valider et mettre à jour l’inventaire</button></div>
+  </form>`;
+}
+
+// ------------------------------------------------------------- comptage tournant
+export function countForm(items, locs) {
+  if (!items.length) return `<p>Tout est compté pour aujourd’hui. Rendez-vous demain pour la suite.</p>
+    <div class="sheet-actions"><button type="button" class="btn primary" data-act="close-sheet">Fermer</button></div>`;
+  return `<form data-form="count" class="stack">
+    <p class="muted small">Quelques produits par jour pour garder l’inventaire juste sans y passer une heure. Indiquez ce que vous avez réellement. Mettez 0 si c’est fini : le produit sortira de l’inventaire et ira sur la liste de courses.</p>
+    ${items.map((x, k) => `<div class="count-row">
+      <input type="hidden" name="cid${k}" value="${esc(x.id)}">
+      <div class="grow"><strong>${esc(x.name)}</strong>
+        <span class="muted small">${esc(locs[x.location] || x.location)} · noté : ${esc(L.fmtQty(x.qty, x.unit) || 'quantité non précisée')} · ${x.counted_at ? `dernier comptage le ${esc(L.fmtDayMonth(L.dayOf(x.counted_at)))}` : 'jamais compté'}</span></div>
+      <span class="amt"><input name="cq${k}" value="${esc(x.qty == null ? '' : String(x.qty).replace('.', ','))}" inputmode="decimal" placeholder="Qté" aria-label="Quantité comptée de ${esc(x.name)}"><span class="unit">${esc(x.unit || 'pièce(s)')}</span></span>
+      <button type="button" class="btn small" data-act="count-zero" data-k="${k}" aria-label="${esc(x.name)} : plus de stock">Épuisé</button>
+    </div>`).join('')}
+    <div class="sheet-actions spread"><button type="button" class="btn ghost" data-act="count-later">Plus tard</button><button class="btn primary">${icon('check')}Valider le comptage</button></div>
   </form>`;
 }

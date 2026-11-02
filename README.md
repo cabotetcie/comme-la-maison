@@ -138,6 +138,9 @@ Ouvrez <http://localhost:5173> dans votre navigateur. Pour arrêter le serveur, 
   - Cocher un produit ne touche pas l’inventaire.
   - « Ranger les achats » transfère les produits dans l’inventaire après vérification des quantités.
 - **Inventaire** : placards, réfrigérateur, congélateur et emplacements personnalisés.
+  - **Comptage du jour** : chaque jour, quelques produits (3 à 8) sont proposés à compter dans une fenêtre à l’ouverture de l’app, en commençant par ceux jamais ou le moins récemment comptés. Tout l’inventaire est revu en une semaine environ.
+  - **Stock 0 = sortie** : un produit à 0 (bouton panier, « − » jusqu’à 0, comptage, cuisine) sort de l’inventaire et passe sur la liste de courses. Il revient avec « Ranger les achats ».
+  - **Vider l’inventaire** pour le refaire au propre (recettes, menus et courses ne sont pas touchés).
   - Bouton « − » pour diminuer le stock et bouton panier pour ajouter un produit aux courses.
   - Alertes pour les produits périmés ou bientôt périmés et pour les stocks bas.
 

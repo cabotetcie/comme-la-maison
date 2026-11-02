@@ -11,7 +11,7 @@
     tasks: { kind: 'tache', category: 'autre', description: null, assignee: null, assign_mode: 'auto', planned_date: null, planned_week: null, someday: false, due_date: null, priority: 'normale', duration_min: null, recurrence: null, subactions: [], project_id: null, status: 'a_faire', done_at: null, done_by: null, seed_key: null },
     task_occurrences: { status: null, moved_to: null, assignee: null, assign_source: null, override: {}, done_at: null, done_by: null },
     shopping_items: { qty: null, unit: null, note: null, category: 'autre', checked: false, checked_at: null, checked_by: null, archived: false, seed_key: null },
-    inventory_items: { category: 'autre', qty: null, unit: null, location: 'placards', expires_on: null, low_threshold: null },
+    inventory_items: { category: 'autre', qty: null, unit: null, location: 'placards', expires_on: null, low_threshold: null, counted_at: null },
     recipes: { ingredients: [], servings: 2, prep_min: null, notes: null, favorite: false },
     meals: { recipe_id: null, title: null, servings: 2, notes: null, no_meal: false, cooked: null },
     projects: { description: null, status: 'actif' }, inbox_items: { note: null, created_by: null },

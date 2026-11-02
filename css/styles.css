@@ -567,3 +567,12 @@ dialog { color: var(--text); }
 .rescue { display: flex; gap: 6px; align-items: flex-start; color: var(--red-700); margin-top: 8px; }
 .rescue .ic { flex: none; margin-top: 2px; }
 .sugg.is-ready { background: linear-gradient(var(--wine-50), var(--wine-50)) padding-box, linear-gradient(135deg, var(--red-400), var(--chrome-3)) border-box; }
+
+/* Comptage tournant */
+.count-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 0; border-top: 1px solid var(--wine-100); }
+.count-row > .grow { display: flex; flex-direction: column; gap: 2px; min-width: 180px; }
+.count-row .amt { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; }
+.count-row .amt input { width: 92px; min-height: 42px; padding: 6px 10px; }
+.count-row .unit { font-size: .85rem; color: var(--muted); min-width: 34px; }
+.count-notice { align-items: flex-start; }
+button.pill { cursor: pointer; font: inherit; font-size: .86rem; color: inherit; }
